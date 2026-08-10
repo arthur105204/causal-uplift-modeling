@@ -1,0 +1,33 @@
+{
+  "dataset_name": "CRITEO-UPLIFTv2.1",
+  "release_id": "<AUTHORITATIVE_RELEASE_ID>",
+  "raw_path": "<LOCAL_RAW_PATH>",
+  "processed_path": "<LOCAL_PROCESSED_PATH>",
+  "raw_sha256": "<SHA256>",
+  "processed_sha256": "<SHA256>",
+  "schema_version": "<SCHEMA_VERSION>",
+  "feature_columns": [
+    "f0",
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5",
+    "f6",
+    "f7",
+    "f8",
+    "f9",
+    "f10",
+    "f11"
+  ],
+  "treatment_column": "treatment",
+  "post_assignment_columns": [
+    "exposure"
+  ],
+  "primary_outcome": "conversion",
+  "secondary_outcomes": [
+    "visit"
+  ],
+  "created_by": "<TOOL_OR_PROCESS>",
+  "created_at_utc": "<ISO_8601>"
+}

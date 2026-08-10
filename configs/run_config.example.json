@@ -1,0 +1,48 @@
+{
+  "run_id": "<RUN_ID>",
+  "phase": "<SPRINT_2_OR_3>",
+  "data_manifest": "configs/data_manifest.json",
+  "features": [
+    "f0",
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5",
+    "f6",
+    "f7",
+    "f8",
+    "f9",
+    "f10",
+    "f11"
+  ],
+  "treatment": "treatment",
+  "primary_outcome": "conversion",
+  "secondary_outcomes": [
+    "visit"
+  ],
+  "forbidden_features": [
+    "treatment",
+    "conversion",
+    "visit",
+    "exposure",
+    "_source_row_id"
+  ],
+  "split_manifest": "<SPLIT_MANIFEST_PATH>",
+  "random_seed": 42,
+  "cross_fitting_folds": 2,
+  "cross_fitting_status": "PROVISIONAL_PRIMARY",
+  "candidate_estimators": [
+    "random",
+    "response_lightgbm",
+    "t_learner_lightgbm",
+    "x_learner_lightgbm",
+    "causal_forest"
+  ],
+  "conditional_estimators": [
+    "dr_learner"
+  ],
+  "selection_partition": "validation",
+  "test_access": "AFTER_PRETEST_FREEZE_ONLY",
+  "output_root": "<LOCAL_OUTPUT_PATH>"
+}

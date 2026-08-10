@@ -1,0 +1,74 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# Local datasets
+data/raw/*
+data/processed/*
+
+# Generated artifacts
+outputs/*
+
+# Preserved local archive contents
+archive/*
+
+# Editor and OS metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+secrets*.json
+
+# Local databases and scratch state
+*.duckdb
+*.duckdb.wal
+*.db
+*.sqlite
+*.sqlite3
+.duckdb_tmp_*/
+.cache/
+
+# Root-level generated ML artifacts
+/artifacts/
+/models/
+/predictions/
+/checkpoints/
+*.ckpt
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+~$*
+
+# Additional coverage and OS metadata
+.coverage.*
+coverage.xml
+desktop.ini
+._*
+
+# Tool-local state
+.agents/
+.codex/
