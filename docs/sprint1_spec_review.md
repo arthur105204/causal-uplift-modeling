@@ -17,7 +17,7 @@ The review covered:
   `docs/index.md`, `REPRODUCIBILITY.md`, `.gitignore`, and both example JSON
   configurations; and
 - derived evidence: this review, `docs/sprint1_freeze_checklist.md`, and
-  `docs/literature_review_matrix.md`.
+  `docs/literatures/literature_review_matrix.md`.
 
 No file under `data/raw/`, `data/processed/`, `outputs/`, or `archive/` was used
 as evidence.
@@ -121,7 +121,7 @@ an aggregate estimand/RCT summary rather than a ranking estimator.
 | Metrics and edge cases | PASS | `docs/07_metric_specification.md` | Numerical results are not part of Sprint 1. |
 | Artifact governance | PASS_WITH_LIMITATION | `docs/adr/ADR-experiment-artifacts.md` | 50K development-only transition gate is Sprint 2. |
 | Repository/reproducibility scaffolding | PASS_WITH_LIMITATION | `README.md`; `REPRODUCIBILITY.md`; `configs/` | Exact environment lock and legacy-code reconciliation are Sprint 2. |
-| Literature grounding | PASS | `docs/literature_review_matrix.md` | Bounded matrix; not a systematic review. |
+| Literature grounding | PASS | `docs/literatures/literature_review_matrix.md` | Bounded matrix; not a systematic review. |
 | Model/audit execution evidence | OPEN_FOR_SPRINT2 | `docs/06_experiment_protocol.md` | No execution claimed or required for Sprint 1. |
 | Held-out evaluation | OPEN_FOR_SPRINT2 | `docs/06_experiment_protocol.md` | Owned by Sprint 3 after pre-test executable freeze. |
 

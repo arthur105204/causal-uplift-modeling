@@ -62,7 +62,7 @@ audit, or evaluate the held-out test set.
 - `LICENSE`
 - `data/README.md`
 - `docs/index.md`
-- `docs/literature_review_matrix.md`
+- `docs/literatures/literature_review_matrix.md`
 - `REPRODUCIBILITY.md`
 - `configs/data_manifest.example.json`
 - `configs/run_config.example.json`

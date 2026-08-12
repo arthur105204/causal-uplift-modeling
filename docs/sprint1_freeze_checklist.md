@@ -49,9 +49,9 @@
 | G7 | Ignore policy | PASS | `.gitignore` | Data, outputs, archive, secrets, caches, and model artifacts excluded. |
 | G8 | Required files non-empty | PASS | Sprint 1 deliverable inventory | All required files exist and have non-zero size. |
 | G9 | Authoritative register integrity | PASS | `docs/decision_register.csv` | 29 rows, 9 columns, unique D01–D29; owner metadata absent but approval implied. |
-| H1 | Literature matrix complete | PASS | `docs/literature_review_matrix.md` | Four core sources plus routing synthesis. |
-| H2 | Sources linked to project decisions | PASS | `docs/literature_review_matrix.md` | Dataset, meta-learner, forest, and DR roles are mapped. |
-| H3 | Literature non-claims | PASS | `docs/literature_review_matrix.md` | No exhaustive-review, universal-winner, or true-ITE claim. |
+| H1 | Literature matrix complete | PASS | `docs/literatures/literature_review_matrix.md` | Four core sources plus routing synthesis. |
+| H2 | Sources linked to project decisions | PASS | `docs/literatures/literature_review_matrix.md` | Dataset, meta-learner, forest, and DR roles are mapped. |
+| H3 | Literature non-claims | PASS | `docs/literatures/literature_review_matrix.md` | No exhaustive-review, universal-winner, or true-ITE claim. |
 
 ## Freeze decision
 
