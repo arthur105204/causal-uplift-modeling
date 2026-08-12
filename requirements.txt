@@ -9,3 +9,4 @@ jupyterlab
 notebook
 ipykernel
 pytest
+psutil>=5.9,<8
