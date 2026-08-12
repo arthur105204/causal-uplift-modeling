@@ -1,11 +1,18 @@
 {
-  "manifest_role": "LOCAL_SELECTOR_TEMPLATE",
+  "manifest_role": "LOCAL_SELECTOR",
   "dataset_name": "CRITEO-UPLIFTv2.1",
   "release_id": "<AUTHORITATIVE_RELEASE_ID>",
   "raw_path": "<LOCAL_RAW_PATH>",
-  "processed_path": "<LOCAL_PROCESSED_PATH>",
+  "raw_compressed_path": "<LOCAL_COMPRESSED_RAW_PATH>",
+  "processed_path": "data/processed/criteo-uplift-v2.1.parquet",
   "raw_sha256": "<SHA256>",
-  "processed_sha256": "<SHA256>",
+  "raw_compressed_sha256": "<SHA256>",
+  "processed_sha256": null,
+  "expected_rows": "<POSITIVE_INTEGER>",
+  "source_size_bytes": {
+    "raw_csv": "<POSITIVE_INTEGER>",
+    "raw_compressed": "<POSITIVE_INTEGER>"
+  },
   "schema_version": "<SCHEMA_VERSION>",
   "feature_columns": [
     "f0",
@@ -34,6 +41,13 @@
     "definition": "zero-based data-row ordinal in the checksum-identified canonical decompressed CSV, excluding the header",
     "model_feature": false
   },
+  "conversion": {
+    "format": "parquet",
+    "compression": "zstd",
+    "row_group_size": 1048576,
+    "analytical_precision": "float64"
+  },
+  "operational_budget": null,
   "external_reference": {
     "publisher": "Criteo",
     "repository": "criteo/criteo-uplift",

@@ -34,6 +34,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+configs/data_manifest.json
 *.pem
 *.key
 credentials*.json

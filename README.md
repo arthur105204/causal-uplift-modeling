@@ -2,13 +2,15 @@
 
 ## Project status
 
-Current phase: **Sprint 2 — T01 ready for implementation**.
+Current phase: **Sprint 2 — T01 implemented and awaiting independent review**.
 
 Sprint 1 froze the causal, data, audit, methodology, experiment, metric, and
 artifact contracts. T01 decision evidence has been reviewed and its loader,
 determinism, row-identity, resource, manifest, and Parquet-layout decisions are
-accepted. The full production data pipeline is not yet implemented. No official
-held-out model evaluation has occurred or is authorized at this stage.
+accepted. The notebook-first production data pipeline has now been executed with
+run-scoped verification evidence; its resource interpretation is a warning, not
+a failed correctness gate. No model training, split construction, or official
+held-out evaluation has occurred or is authorized at this stage.
 
 ## Research objective
 

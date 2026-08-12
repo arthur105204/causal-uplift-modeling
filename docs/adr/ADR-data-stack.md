@@ -4,7 +4,8 @@
 **Decision authority:** Owner-approved `decision_register.csv` decisions D09,
 D19, D20, D21, and D23  
 **Sprint 1 assessment:** PASS_WITH_LIMITATION  
-**Execution status:** OPEN_FOR_SPRINT2
+**Execution status:** T01_DATA_ENGINEERING_VERIFIED; D20_FALLBACK_PROVISIONAL;
+FULL_ENVIRONMENT_LOCK_UNAVAILABLE
 
 ## Context
 
@@ -12,8 +13,9 @@ The owner-approved direction uses Parquet for analytical storage and Pandas plus
 PyArrow as the default data stack. Polars or DuckDB may be considered only under
 the bounded benchmark fallback in D20. The technology direction does not replace
 the higher-authority [data contract](../02_data_contract.md) or
-[experiment protocol](../06_experiment_protocol.md), and no real-data benchmark
-result is asserted here.
+[experiment protocol](../06_experiment_protocol.md). This ADR references the
+recorded T01 data-engineering evidence without reinterpreting it as model,
+causal, or held-out evaluation evidence.
 
 ## Provisional decision
 
@@ -28,8 +30,11 @@ result is asserted here.
 - Use an explicit manifest/configuration as the sole input selector for an
   auditable run.
 
-The exact package versions, threading behavior, benchmark evidence, and
-large-scale execution remain `OPEN_FOR_SPRINT2`.
+T01 production manifests, exact run-environment records, benchmark evidence,
+and full-scale execution evidence now exist. The ADR remains `PROVISIONAL`
+because D20 still permits a bounded Polars/DuckDB fallback only after a concrete
+default-path failure and like-for-like verification; no fallback technology is
+promoted here, and a fully pinned environment lock remains unavailable.
 
 ## Authoritative input
 
@@ -56,9 +61,11 @@ and ordered CSV-to-Parquet semantic reconciliation are now recorded as Sprint 2
 evidence. T01 scale/resource and Snappy-versus-ZSTD observations were reviewed
 under [ADR-T01-data-engineering](ADR-T01-data-engineering.md). That accepted ADR
 uses an operational resource-failure rule without a universal fixed RAM
-percentage and selects ZSTD while retaining the benchmarked row-group layout.
-It does not promote another engine. Production conversion configuration and the
-immutable per-run data-manifest snapshot remain T01 implementation work.
+percentage and selects ZSTD while retaining a fixed row-group layout. The codec
+benchmark held `row_group_size = 1,048,576` constant; it did not test row-group
+alternatives or establish an optimum. It does not promote another engine.
+Production conversion configuration and immutable per-run data-manifest
+snapshots are now recorded in T01 run evidence.
 
 ## Numeric representation
 
@@ -67,9 +74,10 @@ D09 and document 02 fix `float64` as the primary analytical precision.
 primary representation. No loader, conversion, engine fallback, or model path
 may silently coerce primary `f0`–`f11` values to `float32`.
 
-The future lineage manifest records source physical types, processed physical
-types, analytical types, and every explicit cast. Precision sensitivities remain
-separate from the primary population and interpretation.
+The T01 lineage manifest records source and processed identities, conversion
+settings, and primary analytical precision. Future explicit casts must also be
+recorded. Precision sensitivities remain separate from the primary population
+and interpretation.
 
 ## Scale failure
 
@@ -108,13 +116,17 @@ non-finite prohibited values, or unreconciled row identity fails closed.
 
 ## Verification gate
 
-Before pre-test freeze, Sprint 2 must verify the manifest-selected file,
-processed-to-raw lineage, SHA-256 values, schema, primary precision, row identity,
-deterministic sampling/splitting, package environment, and D23 resource gates.
+T01 evidence verifies the manifest-selected file, processed-to-raw lineage,
+SHA-256 values, schema, primary precision, row identity, and D23 data-engineering
+resource gates. Before pre-test freeze, Sprint 2 must preserve those checks and
+add the still-future deterministic split, model, and executable-environment
+verification required by the experiment protocol.
 An alternative engine must additionally reproduce the declared schema, rows,
 identity, ordering or explicit order, and precision of the default path.
 
-No current checksum, benchmark, data-quality, or scale-gate result is claimed.
+Current T01 checksum, conversion, benchmark, and scale-gate evidence is recorded
+under immutable run directories. This ADR does not turn those observations into
+model/data-quality conclusions or promote a D20 fallback engine.
 
 ## Alignment
 
@@ -131,10 +143,11 @@ No current checksum, benchmark, data-quality, or scale-gate result is claimed.
 - Processed Parquet must remain traceable to the authoritative raw release.
 - PyArrow projection/batching is preferred for scalable reads; Pandas
   materialization is explicit and operation-specific.
-- ZSTD with the retained benchmarked row-group layout is the T01 physical
-  Parquet convention; its rationale is workload-specific.
+- ZSTD with the retained fixed row-group layout is the T01 physical Parquet
+  convention; only the codec alternatives were benchmarked.
 - Primary analytical precision is `float64`; legacy behavior does not rewrite
   the specification.
 - Silent scale fallback and test-informed engine choice are prohibited.
-- Exact versions and execution evidence are `OPEN_FOR_SPRINT2`, yielding
-  `PASS_WITH_LIMITATION` rather than a Sprint 1 blocker.
+- T01 manifests and execution evidence now exist. The missing full environment
+  lock and the conditional D20 fallback remain limitations, so this broader ADR
+  stays `PROVISIONAL`/`PASS_WITH_LIMITATION`.

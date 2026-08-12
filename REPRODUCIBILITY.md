@@ -2,11 +2,13 @@
 
 ## Current phase
 
-The current phase is **Sprint 2 — T01 ready for implementation**. Sprint 1
+The current phase is **Sprint 2 — T01 implemented and awaiting review**. Sprint 1
 specifications remain frozen, and T01-D01 through T01-D06 are accepted in
 `docs/adr/ADR-T01-data-engineering.md`. This guide does not authorize model
-training or construction or inspection of held-out evaluation. T01 production
-implementation and verification have not yet been performed.
+training, split construction, or inspection of held-out evaluation. T01
+production implementation and verification evidence is recorded by the primary
+notebook and its immutable run manifest; it remains subject to independent
+review.
 
 ## Environment
 
@@ -25,13 +27,21 @@ manifests.
 ## Local data setup
 
 Follow [`data/README.md`](data/README.md). Raw and processed data remain local and
-must not be committed. Future executable runs use an explicit populated manifest
-derived from `configs/data_manifest.example.json`; they must not discover input
-through filename or directory heuristics.
+must not be committed. Executable runs use the ignored mutable selector
+`configs/data_manifest.json`, derived from
+`configs/data_manifest.example.json`; they must not discover input through
+filename or directory heuristics. The canonical processed target is
+`data/processed/criteo-uplift-v2.1.parquet`.
 
 The populated local manifest records authoritative release metadata, paths,
 SHA-256 checksums, schema, conversion lineage, and tool versions. Placeholder
 values in the example are not execution evidence.
+
+For T01 generation the template may use `processed_sha256: null` because the
+artifact has not yet been produced. Successful generation records the final
+checksum in immutable run evidence. Before T02+ consumption, pin that value in
+the mutable selector: the reusable loader verifies it before opening Parquet and
+fails closed when it is absent or mismatched.
 
 ## Notebook-first execution record
 
@@ -91,11 +101,13 @@ candidates for version control.
 
 - No exact environment lockfile is currently available.
 - Canonical compressed-source, decompressed-CSV, and CSV-to-Parquet semantic
-  identity evidence is recorded. T01-D04 now uses an operation-specific resource
+  identity evidence is recorded. T01-D04 uses an operation-specific resource
   failure rule with no universal fixed RAM percentage; T01-D06 selects ZSTD with
-  the retained benchmarked row-group layout. Production pipeline verification,
-  model correctness, calibration values, and artifact dry-run evidence remain
-  open.
+  the retained fixed row-group layout. The codec benchmark held the row-group
+  size constant and did not test or optimize alternatives. T01 production
+  verification is now available for review and records a resource warning from
+  pagefile/system-memory pressure. Model correctness, calibration values, and
+  later artifact dry-run evidence remain open.
 - LightGBM is a provisional default framework; exact packages, objectives,
   hyperparameters, and serialization must pass Sprint 2 gates.
 - Causal Forest implementation and DR-Learner promotion remain gated.

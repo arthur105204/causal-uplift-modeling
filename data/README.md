@@ -33,13 +33,24 @@ reference; this README does not duplicate them as a second source of truth.
 The authoritative publisher license/citation and any environment-specific local
 paths remain explicit manifest metadata and must not be invented. T01 has now
 recorded ordered CSV-to-Parquet value/schema identity evidence and repeated-write
-physical determinism in the benchmark environment. ZSTD with the retained
-benchmarked row-group layout is selected for the production derivative;
-production conversion lineage and verification remain implementation work.
+physical determinism in the benchmark environment. ZSTD with the retained fixed
+row-group layout is selected for the production derivative. The codec benchmark
+held `row_group_size = 1,048,576` constant and did not test or optimize
+row-group-size alternatives. The T01 notebook has generated the
+manifest-selected ZSTD derivative with source-row ordinals and immutable
+run-scoped lineage/verification evidence; independent review remains pending.
 
 The raw release is authoritative. Processed Parquet is a derived analytical
 format and must preserve documented lineage to that raw release; the two files
 are not independent sources with equal authority.
+
+The stable local production derivative is
+`data/processed/criteo-uplift-v2.1.parquet`. Task identifiers do not enter this
+durable dataset filename. A conversion writes and verifies a run-scoped
+temporary candidate before rollback-protected promotion to that path. Caught
+exceptions restore the previous derivative; an interrupted or ambiguous backup
+state fails closed for explicit validation and recovery. This is not claimed to
+be a true crash-atomic filesystem replacement.
 
 ## Expected columns
 
@@ -69,13 +80,22 @@ validation, primary `float64` analytical precision, row-count reconciliation,
 SHA-256 checksums, conversion configuration, tool versions, and processed-to-raw
 lineage.
 
+Generation may begin with `processed_sha256: null`; it records the final hash
+only after the candidate passes validation and promotion. Before consumption,
+copy that completed-run hash into the mutable selector. The reusable consumer
+verifies it before opening Parquet and rejects missing or mismatched identity.
+
 Input must not be selected by filename order, preferred substrings, extension,
 or directory heuristics. Actual row counts and checksums are Sprint 2 execution
 evidence, not Sprint 1 documentation claims.
 
 Use [`configs/data_manifest.example.json`](../configs/data_manifest.example.json)
-as a non-secret template. Do not commit the populated local manifest if it
-contains machine-specific paths or restricted metadata.
+as the committed non-secret template and populate the ignored
+`configs/data_manifest.json` as the mutable local selector. Each run copies its
+resolved identities and conversion settings to the immutable
+`outputs/runs/<run_id>/audit/data_manifest.json` snapshot. Do not commit the
+populated selector if it contains machine-specific paths or restricted
+metadata.
 
 ## Security and privacy
 

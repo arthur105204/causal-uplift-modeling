@@ -9,7 +9,7 @@ D06, D09, D19, D20, D21, and D23
 
 **Decision status:** T01-D01 through T01-D06 are `ACCEPTED`
 
-**Implementation status:** `OPEN_FOR_T01_IMPLEMENT`
+**Implementation status:** `IMPLEMENTED_AWAITING_REVIEW`
 
 ## Context
 
@@ -33,9 +33,9 @@ repository. Its streamed decompressed bytes also reconcile with the local
 working CSV. T01 decision-evidence runs recorded exact ordered CSV-to-Parquet
 semantic identity, repeated-write physical determinism in the benchmark
 environment, full-data materialization observations, and the bounded
-Snappy-versus-ZSTD comparison. Production conversion lineage and implementation
-verification remain open; accepting this ADR does not declare T01 implementation
-complete.
+Snappy-versus-ZSTD comparison. The notebook-first production conversion has now
+generated run-scoped lineage and verification evidence; independent review
+remains open, so this ADR does not declare Issue #2 complete.
 
 ## Decision summary
 
@@ -46,7 +46,7 @@ complete.
 | T01-D03 | The zero-based canonical source-row ordinal is the provenance/observation identity and is never a feature. | `ACCEPTED` |
 | T01-D04 | Use operation-specific resource failure rules; do not impose a universal fixed RAM-percentage threshold. | `ACCEPTED` |
 | T01-D05 | A mutable environment-specific local selector is separate from the immutable normalized per-run manifest snapshot. | `ACCEPTED` |
-| T01-D06 | Use ZSTD and retain the benchmarked row-group layout unless later evidence supports a separately reviewed change. | `ACCEPTED` |
+| T01-D06 | Use ZSTD and retain the fixed row-group layout unless later evidence supports a separately reviewed change. | `ACCEPTED` |
 
 No row in this table changes the frozen causal estimand, population, variable
 roles, duplicate policy, split, metrics, model scope, uncertainty protocol, or
@@ -63,7 +63,10 @@ automatic side effect of opening the dataset.
 
 The public loader contract must therefore distinguish at least:
 
-- opening and validating a manifest-selected Arrow dataset;
+- generating and validating a processed derivative before its final checksum is
+  available;
+- consuming a manifest-selected Arrow dataset only after verifying its expected
+  processed SHA-256;
 - iterating deterministic batches or scanning selected columns; and
 - explicitly materializing a declared population and column set as a Pandas
   DataFrame for consumers that require it.
@@ -176,9 +179,11 @@ failure of the default path under the operational rule above.
 
 Two artifacts have different responsibilities:
 
-1. **Local selector.** A mutable, environment-specific, uncommitted manifest or
-   configuration supplies local paths and the intended run inputs. It may change
-   when execution moves between local and Kaggle environments.
+1. **Local selector.** The mutable, environment-specific, uncommitted
+   `configs/data_manifest.json` supplies local paths and the intended run
+   inputs. It may change when execution moves between local and Kaggle
+   environments. The committed `configs/data_manifest.example.json` is only its
+   path-free template and is not execution evidence.
 2. **Per-run snapshot.** At run start, the pipeline resolves and normalizes the
    selector into `outputs/runs/<run_id>/audit/data_manifest.json`. The snapshot
    records portable artifact identities, checksums, schemas, conversion
@@ -190,13 +195,31 @@ not. Neither artifact may silently select input by filename order or directory
 heuristics. Machine-specific absolute paths and restricted metadata must not be
 committed.
 
+Generation may start with `processed_sha256: null` because the derivative does
+not yet exist. After validation and promotion, its SHA-256 is recorded in the
+immutable run evidence. Before later analytical consumption, that completed-run
+value is pinned into the mutable selector; the reusable loader verifies it before
+opening the Parquet file. A missing or mismatched expected checksum fails closed.
+
 ## T01-D06 — Parquet physical layout
 
 **Status: `ACCEPTED`.**
 
-Use ZSTD compression. Retain the benchmarked row-group size of `1,048,576` rows
-and the held-constant writer layout unless later evidence justifies a separate,
-explicitly reviewed change.
+Use ZSTD compression. Retain the fixed row-group size of `1,048,576` rows and
+the held-constant writer layout unless later evidence justifies a separate,
+explicitly reviewed change. The benchmark compared Snappy with ZSTD while this
+row-group size was fixed; it did not evaluate row-group alternatives, so the
+retained size is not claimed to be benchmark-optimized or optimal.
+
+The stable production derivative is
+`data/processed/criteo-uplift-v2.1.parquet`. `T01` identifies the task that
+creates and verifies this derivative; it is not part of the durable dataset
+filename. Run-scoped temporary candidates may use implementation-specific names
+but are not authoritative consumer paths. Promotion is rollback-protected for
+caught exceptions, not a true crash-atomic filesystem replacement: if startup
+or a later promotion finds a `.previous.tmp` backup, it changes no files and
+fails closed with explicit validation/restoration instructions. It never
+silently discards an ambiguous backup left by an abrupt interruption.
 
 The bounded benchmark compares exactly:
 
@@ -244,6 +267,10 @@ marker, environment, settings, repetitions, raw measurements, summaries, and
 verification outcomes. They contain no held-out evaluation, model training, or
 decision disguised as a PASS threshold.
 
+Historical benchmark attempts without closing manifests are classified in the
+[T01 historical run disposition index](../t01_historical_run_dispositions.md).
+That retrospective index does not rewrite or promote their original evidence.
+
 ## Verification and status transition
 
 The decision-evidence and owner-review conditions are satisfied, so this ADR is
@@ -251,18 +278,22 @@ The decision-evidence and owner-review conditions are satisfied, so this ADR is
 pre-decision `PENDING_EMPIRICAL_EVIDENCE` wording because they truthfully record
 the state when generated; this ADR is the subsequent owner-approved resolution.
 
-ADR acceptance freezes the T01 implementation choices only. Full T01
-implementation, production conversion, normalized run-manifest generation,
-failure-path verification, and Definition-of-Done checks remain open under Issue
-#2. They must not be reported as completed by this status transition.
+ADR acceptance freezes the T01 implementation choices only. The T01 notebook has
+now executed production conversion, normalized run-manifest generation, D23,
+semantic/determinism checks, and failure-path verification. Those implementation
+claims remain subject to independent review under Issue #2 and are not promoted
+to model, split, or held-out evidence.
 
 ## Consequences
 
 - Consumers obtain a clear lazy/batch path and opt into Pandas materialization.
+- Processed-data consumption verifies a pinned SHA-256 before Arrow opens the
+  artifact; generation records the final checksum after validated promotion.
 - Processed Parquet remains a derivative of the checksum-identified raw source.
 - Stable row alignment is possible without claiming a person identifier.
 - Resource suitability is judged operationally per declared environment and
   operation, without a fabricated universal RAM percentage.
-- ZSTD is the accepted T01 codec under the retained benchmarked row-group layout.
+- ZSTD is the accepted T01 codec under the retained fixed row-group layout; no
+  row-group-size alternatives were benchmarked.
 - No alternative data engine is promoted by this decision or benchmark.
-- T01 implementation remains incomplete until Issue #2 verification passes.
+- T01 implementation evidence is available and awaits independent Issue #2 review.

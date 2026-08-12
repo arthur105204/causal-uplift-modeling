@@ -129,11 +129,12 @@ An auditable conversion record must contain source and destination paths,
 cryptographic checksums, source/processed row counts, schemas, tool versions,
 conversion command/configuration, timestamps, and any cast or filter.
 
-Current loading code casts `f0`–`f11` to `float32`. Because this can merge values
-that were distinct at higher precision, exact duplicate conclusions on processed
-data alone cannot establish source duplication. The origin procedure in document
-04 compares source precision, the corresponding `float32` projection, and the
-processed Parquet.
+The current T01 loading and conversion path preserves `f0`–`f11` as `float64`.
+Because an explicitly requested `float32` sensitivity projection can merge
+values that are distinct at higher precision, duplicate conclusions from that
+projection cannot establish source duplication. The origin procedure in
+document 04 compares source precision, the separately labeled `float32`
+projection, and the primary `float64` processed Parquet.
 
 D09 fixes `float64` as the primary analytical precision. `float32` is a
 sensitivity projection only unless a new owner-approved register decision
