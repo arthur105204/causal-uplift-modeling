@@ -21,7 +21,7 @@ rows beyond the first, group count, largest group, and cross-split group count.
 
 | ID | Definition | Columns | Class and interpretation |
 |---|---|---|---|
-| DP-01 | Run-local identity duplication | `_source_row_id` | **HARD_GATE**: values must be complete and unique before splitting and disjoint across splits. Repetition is a split/data-pipeline failure. |
+| DP-01 | Source-row identity duplication | `_source_row_id` | **HARD_GATE**: canonical source ordinals must be complete and unique before splitting and disjoint across splits. Repetition is a split/data-pipeline failure. |
 | DP-02 | Exact loaded-value profile | `f0`–`f11`, `treatment`, `conversion`, plus `visit`/`exposure` when present | **EMPIRICAL_DIAGNOSTIC**: equal processed values; not a person identity. Precision and conversion may create equality. |
 | DP-03 | Feature profile | `f0`–`f11` | **EMPIRICAL_DIAGNOSTIC**: rows indistinguishable to permitted models. Expected or problematic status cannot be inferred from count alone. |
 | DP-04 | Feature-plus-treatment profile | `f0`–`f11`, `treatment` | **EMPIRICAL_DIAGNOSTIC**: repeated model inputs within an arm. |
@@ -42,13 +42,16 @@ Record source and processed paths, checksums when available, row counts, schemas
 column order, numeric precision, conversion command, and tool versions. A
 row-limited run is a smoke test only and cannot support a final origin conclusion.
 
-`OPEN_DECISION`: the exact active-source checksum and durable source-row identity.
+The active source checksum is recorded in the execution manifest. T01-D03 uses
+the zero-based canonical source-row ordinal as the durable released-row identity;
+it is not a person identifier.
 
-### 2. Establish run-local row identity
+### 2. Establish source-row identity
 
-Create `_source_row_id` once after sampling and before any split. Verify it is
-complete and unique. It is an index for that sampled frame only; do not regenerate
-it independently inside each split and do not call it a user ID.
+Preserve `_source_row_id` from the checksum-identified canonical source through
+conversion and any sampling, before any split. Verify it is complete and unique
+in the active frame. Do not regenerate or renumber it inside a sample or split,
+and do not call it a user ID.
 
 ### 3. Profile the unsplit loaded sample
 

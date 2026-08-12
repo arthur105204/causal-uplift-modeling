@@ -29,7 +29,7 @@ population.
 | `Y` | binary `conversion` | Primary outcome. Never a feature. |
 | `visit` | optional binary secondary outcome | Secondary robustness outcome under D02 when present and schema-valid; never `X`, `T`, primary `Y=conversion`, a selection condition, or an analysis-population filter. |
 | `exposure` | optional audit-only observed field | Descriptive audit only; never `X`, a replacement for `T`, `Y`, a selection condition, or an analysis-population filter. |
-| `_source_row_id` | run-local sampled-row identity | Split-integrity audit only; never a person identifier or feature. |
+| `_source_row_id` | zero-based ordinal of the row in the checksum-identified canonical decompressed CSV | Provenance, split integrity, deterministic tie-breaking, and artifact alignment only; never a person identifier or feature. |
 
 `PROVISIONAL`: repository narratives classify `visit` and `exposure` as
 post-assignment variables. Until source documentation confirms their semantics

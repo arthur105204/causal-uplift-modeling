@@ -2,14 +2,13 @@
 
 ## Project status
 
-Current phase: **Sprint 1 — design and specification freeze**.
+Current phase: **Sprint 2 — T01 ready for implementation**.
 
-Sprint 1 defines the causal, data, audit, methodology, experiment, metric, and
-artifact contracts. It does not claim that an official held-out test evaluation
-has occurred. Files already present under `outputs/` or `archive/` predate or sit
-outside the current frozen protocol and are not evidence for it. Implementation,
-development execution, promotion evidence, and pre-test executable freeze belong
-to Sprint 2; authorized held-out evaluation belongs to Sprint 3.
+Sprint 1 froze the causal, data, audit, methodology, experiment, metric, and
+artifact contracts. T01 decision evidence has been reviewed and its loader,
+determinism, row-identity, resource, manifest, and Parquet-layout decisions are
+accepted. The full production data pipeline is not yet implemented. No official
+held-out model evaluation has occurred or is authorized at this stage.
 
 ## Research objective
 
@@ -75,12 +74,19 @@ hyperparameters, seeds, ranking rules, or claims.
 configs/       non-secret example manifests/configurations
 data/          local raw and processed data; only data/README.md is versioned
 docs/          decision register, specifications, ADRs, Sprint plan, and reviews
-scripts/       environment and implementation utilities; model execution is later-phase work
-src/           implementation modules requiring Sprint 2 protocol reconciliation
-tests/         synthetic/unit-test code; execution evidence is not part of Sprint 1
-outputs/       generated local artifacts; ignored and non-authoritative for Sprint 1
+notebooks/      primary research execution, evidence, verification, and interpretation narrative
+outputs/       immutable run-scoped machine-readable empirical evidence; ignored by Git
+src/           optional reusable machinery when concretely justified
+tests/         optional or task-required automated regression verification when justified
+scripts/       optional supporting automation when concretely justified
 archive/       historical local material; ignored and non-authoritative
 ```
+
+From Sprint 2 empirical execution onward, the project is notebook-first, not
+notebook-only. The relevant notebook must expose the question, pre-execution
+protocol, code, checks, observations, interpretation, and limitations. Reusable
+modules, scripts, and tests support that narrative only when reuse, correctness,
+an authoritative contract, or unreasonable notebook duplication justifies them.
 
 ## Data policy
 

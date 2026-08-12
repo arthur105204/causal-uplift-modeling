@@ -1,4 +1,5 @@
 {
+  "manifest_role": "LOCAL_SELECTOR_TEMPLATE",
   "dataset_name": "CRITEO-UPLIFTv2.1",
   "release_id": "<AUTHORITATIVE_RELEASE_ID>",
   "raw_path": "<LOCAL_RAW_PATH>",
@@ -28,6 +29,19 @@
   "secondary_outcomes": [
     "visit"
   ],
+  "source_row_identity": {
+    "field": "_source_row_id",
+    "definition": "zero-based data-row ordinal in the checksum-identified canonical decompressed CSV, excluding the header",
+    "model_feature": false
+  },
+  "external_reference": {
+    "publisher": "Criteo",
+    "repository": "criteo/criteo-uplift",
+    "artifact_name": "criteo-research-uplift-v2.1.csv.gz",
+    "sha256": "2716e1bf0fd157a93b5bf86924d9088419dfbac2022c6cd90030220634f616dc",
+    "size_bytes": 311422618
+  },
+  "run_snapshot_path_template": "outputs/runs/<run_id>/audit/data_manifest.json",
   "created_by": "<TOOL_OR_PROCESS>",
   "created_at_utc": "<ISO_8601>"
 }

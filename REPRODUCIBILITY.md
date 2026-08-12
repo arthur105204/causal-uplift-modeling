@@ -2,9 +2,11 @@
 
 ## Current phase
 
-The current phase is **Sprint 1 — specification freeze**. This guide documents
-safe environment and configuration preparation; it does not authorize model
-training, audit execution on real data, or held-out test access.
+The current phase is **Sprint 2 — T01 ready for implementation**. Sprint 1
+specifications remain frozen, and T01-D01 through T01-D06 are accepted in
+`docs/adr/ADR-T01-data-engineering.md`. This guide does not authorize model
+training or construction or inspection of held-out evaluation. T01 production
+implementation and verification have not yet been performed.
 
 ## Environment
 
@@ -31,17 +33,20 @@ The populated local manifest records authoritative release metadata, paths,
 SHA-256 checksums, schema, conversion lineage, and tool versions. Placeholder
 values in the example are not execution evidence.
 
-## Environment check
+## Notebook-first execution record
 
-The only Sprint 1-safe executable command documented here is the synthetic
-environment check:
+From Sprint 2 onward, the task notebook is the primary human-readable research
+and execution record. It must state the question and protocol before code, expose
+important operations and checks, link immutable machine-readable outputs, and
+separate observations from decisions and unsupported conclusions.
 
-```powershell
-python scripts/check_environment.py
-```
-
-It checks library availability with synthetic inputs. Do not run a model pipeline
-or use its output as Sprint 1 completion evidence.
+For T01, the primary artifact is
+`notebooks/02_data_engineering_pipeline.ipynb`. Its environment cell records the
+interpreter, relevant packages, platform, CPU and memory with each run. A helper
+under `src/`, `scripts/`, or `tests/` is optional and is introduced only when
+reuse, regression verification, an authoritative contract, or avoidance of
+unreasonable notebook duplication justifies it. Notebooks must not become thin
+wrappers around opaque helper packages.
 
 ## Phase boundaries
 
@@ -78,14 +83,19 @@ The following remain outside version control:
   logs; and
 - caches, virtual environments, notebook checkpoints, and local IDE state.
 
-Only source code, specifications, approved ADRs, tests/fixtures without real
-rows, and non-secret configuration examples are candidates for version control.
+Only notebooks, source code, specifications, approved ADRs, justified
+tests/fixtures without real rows, and non-secret configuration examples are
+candidates for version control.
 
 ## Known limitations
 
 - No exact environment lockfile is currently available.
-- Actual checksums, scale/resource results, model correctness, calibration
-  values, and artifact dry-run evidence belong to Sprint 2.
+- Canonical compressed-source, decompressed-CSV, and CSV-to-Parquet semantic
+  identity evidence is recorded. T01-D04 now uses an operation-specific resource
+  failure rule with no universal fixed RAM percentage; T01-D06 selects ZSTD with
+  the retained benchmarked row-group layout. Production pipeline verification,
+  model correctness, calibration values, and artifact dry-run evidence remain
+  open.
 - LightGBM is a provisional default framework; exact packages, objectives,
   hyperparameters, and serialization must pass Sprint 2 gates.
 - Causal Forest implementation and DR-Learner promotion remain gated.

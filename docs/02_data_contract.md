@@ -40,7 +40,7 @@ is permitted without that additional evidence.
 | `conversion` | required | Complete binary values in `{0,1}`; labels are never silently remapped or imputed. | `Y`, primary outcome; forbidden from `X`. |
 | `visit` | optional | If used under D02, complete binary values in `{0,1}`; retained without using it to define `X`, `T`, primary `Y=conversion`, or the primary population. | Secondary robustness outcome; otherwise descriptive audit field. |
 | `exposure` | optional | If present, retained without using it to define `X`, replace `T`, define `Y`, or filter the primary population. | Audit-only. |
-| `_source_row_id` | generated | Complete and unique within a loaded sample before splitting. | Run-local split identity only; forbidden from `X`. |
+| `_source_row_id` | generated from the canonical source | Complete and unique zero-based data-row ordinal in the checksum-identified decompressed CSV, excluding the header. | Provenance/observation identity, split integrity, deterministic tie-breaking, and artifact alignment only; forbidden from `X`. |
 
 Thus the only valid mappings are:
 
@@ -60,13 +60,16 @@ uncertainty strengthens, rather than relaxes, their exclusion from `X`.
 ## Processed-data location and selection
 
 The confirmed repository convention is a Parquet file under `data/processed/`.
-Current code selects a schema-compatible `.parquet` and prefers a filename
-containing both “criteo” and “uplift.”
+T01-D05 requires an explicit mutable local selector for environment-specific
+paths and a separate immutable normalized snapshot at
+`outputs/runs/<run_id>/audit/data_manifest.json`. Heuristic selection by
+filename, extension, directory order, or preferred substring is non-conforming.
 
-`OPEN_DECISION`: replace heuristic selection with an explicit manifest path and
-checksums for final evaluation. If more than one schema-compatible candidate is
-present and no manifest selects one, the final workflow must stop rather than
-silently choose by filename order.
+If a selector is missing, ambiguous, checksum-incompatible, or points to a
+schema-incompatible candidate, the workflow stops. The immutable per-run
+snapshot records the resolved raw and processed identities and is hashed by the
+run artifact manifest. Implementation details are controlled by
+[ADR-T01-data-engineering](adr/ADR-T01-data-engineering.md).
 
 ## HARD_GATE validation
 
@@ -90,9 +93,11 @@ evidence location. Failure stops the affected run.
 7. All `f0`–`f11` fields are numeric and contain no positive or negative infinity.
    Missing feature values are not silently filled; they are reported and may be
    retained only under the frozen handling rule in the experiment protocol.
-8. `_source_row_id` is created after sampling and before splitting, is complete
-   and unique in that sampled frame, and is disjoint across train, validation,
-   and test. Row counts reconcile across the split.
+8. `_source_row_id` preserves the original zero-based canonical source-row
+   ordinal through conversion and any sampling, is complete and unique in the
+   active frame before splitting, and is disjoint across train, validation, and
+   test. Sampling or filtering must not renumber retained observations. Row
+   counts reconcile across the split.
 9. Each split contains treatment and control observations and both outcome
    classes in both arms where the configured learner/evaluator requires them.
 10. The final-test partition is not used to select data transformations,
@@ -135,16 +140,20 @@ sensitivity projection only unless a new owner-approved register decision
 changes the primary precision. The manifest must record physical and analytical
 precision, and duplicate interpretations must remain precision-qualified.
 
-## `_source_row_id` limitation
+## `_source_row_id` scope and limitation
 
-`_source_row_id` is a sequential identity created within a sampled frame. It can
-prove that the same sampled row was not placed in multiple splits in one run. It
-cannot locate a row in the original source, compare identities across independent
-samples/runs, establish a unique person, or detect distinct source rows with
-equal values.
+T01-D03 resolves the prior implementation question: `_source_row_id` is the
+zero-based ordinal of the data row in the checksum-identified canonical
+decompressed CSV, excluding the header. Its identity is therefore meaningful
+only together with that raw checksum. It can locate and align a released row
+across deterministic derivatives, samples, splits, predictions, and runs that
+share the same canonical source.
 
-`OPEN_DECISION`: define a durable, privacy-preserving source-row identity or
-document why source-row traceability cannot be provided.
+It cannot establish a unique person, infer user identity, or show that distinct
+rows with equal values are accidental duplicates. It is forbidden from `X` and
+from eligibility or deduplication decisions. The implementation and verification
+details are controlled by
+[ADR-T01-data-engineering](adr/ADR-T01-data-engineering.md).
 
 ## ASSUMPTION_SUPPORT_OR_LIMITATION items
 

@@ -111,8 +111,22 @@ test-use restrictions are controlled by
 ## Sprint boundaries and next evidence
 
 Sprint 1 closes documentation only after its checklist contains no `BLOCKER`.
-Sprint 2 owns implementation, actual manifests/checksums, design-calibration
-values, objective tests, scale gates, development validation, method promotion,
-and the pre-test executable freeze. Sprint 3 owns the authorized one-time
-held-out evaluation. Existing generated outputs do not establish any of those
-future results.
+Sprint 2 owns implementation, processed-data lineage/manifests,
+design-calibration values, objective tests, scale gates, development validation,
+method promotion, and the pre-test executable freeze. Canonical compressed-source
+and decompressed-CSV checksums plus ordered CSV-to-Parquet semantic identity have
+now been recorded. T01 implementation choices, including the operational
+resource rule and ZSTD layout, are accepted; production pipeline verification
+and all model evidence remain open. Sprint 3 owns the authorized one-time
+held-out evaluation.
+
+## Forward execution convention
+
+This paragraph is a Sprint 2+ implementation convention, not a retroactive
+Sprint 1 freeze claim. The task notebook is the primary human-readable research,
+execution, verification, evidence, and interpretation record. Immutable
+machine-readable outputs remain under `outputs/runs/<run_id>/`, configuration
+under `configs/`, and implementation decisions under `docs/adr/`. Modules,
+scripts, and automated tests are optional supporting infrastructure introduced
+only when concretely justified; notebook-first does not mean notebook-only and
+does not relax any artifact, leakage, or held-out-isolation rule.

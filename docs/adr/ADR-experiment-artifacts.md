@@ -10,6 +10,13 @@ models, logs, and audit files below `outputs/`. Existing files are not endorsed 
 current evidence. This ADR freezes names and stage semantics before any future
 held-out evaluation.
 
+From Sprint 2 empirical execution onward, the relevant notebook is the primary
+human-readable protocol, execution, verification, and interpretation record.
+The run artifacts governed here remain the authoritative machine-readable
+evidence. Notebook-first therefore does not permit embedding untracked result
+state in a notebook or weakening immutable-run, manifest, prediction, model, or
+test-isolation requirements.
+
 ## Provisional decision
 
 Every listed artifact path is relative to the immutable run root

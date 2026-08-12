@@ -89,7 +89,9 @@ counts/rates; they may be populated only after authorized release.
    diagnostic-calibration algorithm without test information. Generated
    development-data thresholds are locked later, before the pre-test executable
    freeze.
-4. Create `_source_row_id` once after sampling and before splitting.
+4. Preserve `_source_row_id` as the original zero-based canonical source-row
+   ordinal through conversion and any sampling; do not renumber retained rows
+   before splitting.
 5. Execute only the current D23 scale rung. Promote from 50K to 500K to 2M to
    full data only after its predeclared correctness/resource evidence passes;
    do not introduce an unregistered sample-size fallback.

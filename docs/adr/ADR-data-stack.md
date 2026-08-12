@@ -18,7 +18,10 @@ result is asserted here.
 ## Provisional decision
 
 - Use PyArrow for typed Parquet metadata and columnar I/O.
-- Use Pandas/NumPy with explicit configuration as the default table path.
+- Use PyArrow Dataset/Scanner projection and batching as the scalable low-level
+  loading path. Use Pandas/NumPy with explicit configuration when a consumer
+  genuinely requires materialization; full Pandas materialization is an
+  explicit operation, not the default effect of opening the dataset.
 - Evaluate Polars or DuckDB only if the default misses a predeclared
   correctness/resource bound and the alternative passes like-for-like identity,
   schema, precision, ordering, and determinism checks.
@@ -48,9 +51,14 @@ Sprint 1 freezes the required provenance/checksum fields and SHA-256 algorithm.
 It does not invent an authoritative URL, publisher license, release identifier,
 or checksum value that the owner-approved sources have not supplied.
 
-Actual paths, release metadata, row counts, checksums, and manifest evidence are
-`OPEN_FOR_SPRINT2`. Their absence as execution evidence is not a Sprint 1 blocker
-because the specification and fail-closed behavior are defined.
+The canonical compressed-source checksum/size, decompressed-CSV reconciliation,
+and ordered CSV-to-Parquet semantic reconciliation are now recorded as Sprint 2
+evidence. T01 scale/resource and Snappy-versus-ZSTD observations were reviewed
+under [ADR-T01-data-engineering](ADR-T01-data-engineering.md). That accepted ADR
+uses an operational resource-failure rule without a universal fixed RAM
+percentage and selects ZSTD while retaining the benchmarked row-group layout.
+It does not promote another engine. Production conversion configuration and the
+immutable per-run data-manifest snapshot remain T01 implementation work.
 
 ## Numeric representation
 
@@ -67,6 +75,13 @@ separate from the primary population and interpretation.
 
 D23 defines the 50K→500K→2M→full correctness/resource progression. Failure at a
 scale gate does not authorize a silent 2M→1M or other unregistered fallback.
+
+T01-D04 defines failure operationally: OOM/process termination, incorrect or
+incomplete execution, sustained severe system-memory/pagefile pressure that
+makes the declared environment unsuitable, or violation of a separately
+declared operational budget. Process RSS alone is insufficient evidence of
+machine safety, and this project has no universal `70%`, `80%`, or other fixed
+RAM-percentage threshold.
 
 Any scale reduction must:
 
@@ -114,6 +129,10 @@ No current checksum, benchmark, data-quality, or scale-gate result is claimed.
 
 - Final input selection is manifest-driven and fail-closed.
 - Processed Parquet must remain traceable to the authoritative raw release.
+- PyArrow projection/batching is preferred for scalable reads; Pandas
+  materialization is explicit and operation-specific.
+- ZSTD with the retained benchmarked row-group layout is the T01 physical
+  Parquet convention; its rationale is workload-specific.
 - Primary analytical precision is `float64`; legacy behavior does not rewrite
   the specification.
 - Silent scale fallback and test-informed engine choice are prohibited.

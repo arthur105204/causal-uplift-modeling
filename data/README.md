@@ -23,11 +23,19 @@ version-controlled path.
 
 ## Authoritative dataset
 
-The active analytical dataset is **CRITEO-UPLIFTv2.1**. The owner-approved
-documentation does not yet freeze an authoritative download URL, publisher
-license text, release identifier, or checksum value. Those values must not be
-invented here. Sprint 2 records them in an explicit manifest before an auditable
-run.
+The active analytical dataset is **CRITEO-UPLIFTv2.1**. The local canonical
+compressed artifact has been reconciled to the SHA-256 and byte size published
+for `criteo-research-uplift-v2.1.csv.gz` in Criteo's public Hugging Face dataset
+repository. The local working CSV also matches the streamed decompressed content
+of that compressed artifact. The evidence manifest records the exact values and
+reference; this README does not duplicate them as a second source of truth.
+
+The authoritative publisher license/citation and any environment-specific local
+paths remain explicit manifest metadata and must not be invented. T01 has now
+recorded ordered CSV-to-Parquet value/schema identity evidence and repeated-write
+physical determinism in the benchmark environment. ZSTD with the retained
+benchmarked row-group layout is selected for the production derivative;
+production conversion lineage and verification remain implementation work.
 
 The raw release is authoritative. Processed Parquet is a derived analytical
 format and must preserve documented lineage to that raw release; the two files
