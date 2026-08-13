@@ -763,8 +763,8 @@ def _run_is_complete(run_root: Path) -> bool:
     return isinstance(status, str) and status.startswith(("COMPLETED", "FAILED"))
 
 
-def write_json_new(run_root: Path, relative_path: str, payload: Any) -> Path:
-    """Write a new run artifact and refuse completed-run or overwrite mutation."""
+def _new_run_artifact_path(run_root: Path, relative_path: str) -> Path:
+    """Resolve a new governed artifact path and fail closed for completed runs."""
 
     run_root = run_root.resolve()
     if _run_is_complete(run_root):
@@ -775,10 +775,29 @@ def write_json_new(run_root: Path, relative_path: str, payload: Any) -> Path:
     except ValueError as exc:
         raise DataContractError("Run artifact path escapes the run root") from exc
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("x", encoding="utf-8", newline="\n") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
-        handle.write("\n")
     return destination
+
+
+def write_bytes_new(run_root: Path, relative_path: str, payload: bytes) -> Path:
+    """Write bytes once while refusing completed-run or overwrite mutation."""
+
+    destination = _new_run_artifact_path(run_root, relative_path)
+    with destination.open("xb") as handle:
+        handle.write(payload)
+    return destination
+
+
+def write_text_new(run_root: Path, relative_path: str, payload: str) -> Path:
+    """Write UTF-8 text once under the governed run-artifact contract."""
+
+    return write_bytes_new(run_root, relative_path, payload.encode("utf-8"))
+
+
+def write_json_new(run_root: Path, relative_path: str, payload: Any) -> Path:
+    """Write JSON once under the governed run-artifact contract."""
+
+    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    return write_text_new(run_root, relative_path, text)
 
 
 def finalize_artifact_manifest(
@@ -788,11 +807,15 @@ def finalize_artifact_manifest(
     external_artifacts: list[dict[str, Any]],
     final_status: str,
     created_at_utc: str,
+    stage: str = "development_data_engineering",
+    population: str = "canonical_released_rows_or_declared_prefix",
 ) -> Path:
     """Hash all closed run artifacts and atomically close the run."""
 
     if not final_status.startswith(("COMPLETED", "FAILED")):
         raise ValueError("final_status must begin with COMPLETED or FAILED")
+    if not stage.strip() or not population.strip():
+        raise ValueError("stage and population must be non-empty")
     run_root = run_root.resolve()
     audit_dir = run_root / "audit"
     manifest_path = audit_dir / "artifact_manifest.json"
@@ -807,8 +830,8 @@ def finalize_artifact_manifest(
                 "path": path.relative_to(run_root).as_posix(),
                 "size_bytes": path.stat().st_size,
                 "sha256": sha256_file(path),
-                "stage": "development_data_engineering",
-                "population": "canonical_released_rows_or_declared_prefix",
+                "stage": stage,
+                "population": population,
                 "status": "PASS",
             }
         )

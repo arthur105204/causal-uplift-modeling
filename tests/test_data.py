@@ -15,6 +15,7 @@ from src.data import (
     DataContractError,
     SemanticHasher,
     convert_csv_to_parquet,
+    finalize_artifact_manifest,
     load_selector,
     open_processed_dataset,
     promote_processed_with_rollback,
@@ -22,7 +23,9 @@ from src.data import (
     validate_processed_parquet,
     validate_source_identity,
     verify_expected_file_checksum,
+    write_bytes_new,
     write_json_new,
+    write_text_new,
 )
 
 
@@ -199,15 +202,62 @@ def test_small_conversion_is_semantic_and_physically_deterministic(tmp_path: Pat
     assert first_validation["compression"] == ["zstd"]
 
 
-def test_completed_run_rejects_new_artifacts(tmp_path: Path) -> None:
+@pytest.fixture
+def completed_run(tmp_path: Path) -> Path:
     run_root = tmp_path / "run"
     audit = run_root / "audit"
     audit.mkdir(parents=True)
     (audit / "artifact_manifest.json").write_text(
         json.dumps({"status": "COMPLETED_PASS"}), encoding="utf-8"
     )
+    return run_root
+
+
+def test_completed_run_rejects_late_json(completed_run: Path) -> None:
     with pytest.raises(DataContractError, match="immutable"):
-        write_json_new(run_root, "audit/late.json", {"unexpected": True})
+        write_json_new(completed_run, "audit/late.json", {"unexpected": True})
+
+
+def test_completed_run_rejects_late_csv(completed_run: Path) -> None:
+    with pytest.raises(DataContractError, match="immutable"):
+        write_text_new(completed_run, "tables/late.csv", "value\n1\n")
+
+
+def test_completed_run_rejects_late_png(completed_run: Path) -> None:
+    with pytest.raises(DataContractError, match="immutable"):
+        write_bytes_new(completed_run, "figures/late.png", b"synthetic-png")
+
+
+def test_governed_artifact_writer_rejects_overwrite(tmp_path: Path) -> None:
+    run_root = tmp_path / "run"
+    destination = write_text_new(run_root, "tables/existing.csv", "value\n1\n")
+
+    with pytest.raises(FileExistsError):
+        write_text_new(run_root, "tables/existing.csv", "value\n2\n")
+
+    assert destination.read_text(encoding="utf-8") == "value\n1\n"
+
+
+def test_artifact_manifest_records_declared_stage_and_population(tmp_path: Path) -> None:
+    run_root = tmp_path / "outputs" / "runs" / "t02_fixture"
+    write_json_new(run_root, "audit/run_config.json", {"task": "T02"})
+
+    manifest_path = finalize_artifact_manifest(
+        run_root,
+        run_id="t02_fixture",
+        external_artifacts=[],
+        final_status="COMPLETED_PASS",
+        created_at_utc="2026-08-13T00:00:00+00:00",
+        stage="pre_split_descriptive_eda",
+        population="validated_unsplit_released_rows",
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["artifacts"]
+    assert {
+        (artifact["stage"], artifact["population"])
+        for artifact in manifest["artifacts"]
+    } == {("pre_split_descriptive_eda", "validated_unsplit_released_rows")}
 
 
 def test_failed_promotion_restores_existing_canonical(
