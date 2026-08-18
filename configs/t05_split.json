@@ -1,0 +1,37 @@
+{
+  "schema_version": "t05-split-config-v1",
+  "task": "T05",
+  "issue": 6,
+  "input": {
+    "selector": "configs/data_manifest.json",
+    "predecessor": {
+      "task": "T03-A",
+      "config": "configs/t03_audit.json",
+      "required_lifecycle_state": "T03_PRE_SPLIT_COMPLETE"
+    }
+  },
+  "split": {
+    "seed": 42,
+    "train_fraction": 0.70,
+    "validation_fraction": 0.15,
+    "heldout_fraction": 0.15,
+    "stratification": "joint (treatment, conversion)",
+    "labels": ["train", "validation", "held_out"]
+  },
+  "scope_guards": {
+    "access_held_out_labels": false,
+    "access_held_out_features": false,
+    "expose_held_out_counts_or_rates": false,
+    "fit_preprocessing": false,
+    "train_models": false
+  },
+  "lifecycle_state": "T05_SPLIT_ACCEPTED",
+  "lifecycle_state_evidence": {
+    "authorizing_run_id": "t05_split_20260818T073132Z_534290",
+    "authorizing_run_manifest": "outputs/runs/t05_split_20260818T073132Z_534290/audit/artifact_manifest.json",
+    "membership_sha256": "cfc3789fdff58cd401aeb6d6e50afe0b26026ef8466ee8e9a7f9c822725f214c",
+    "row_counts": {"train": 9785714, "validation": 2096938, "held_out": 2096940},
+    "checklist_verified": "T05.1 through T05.9 (Issue #6): disjointness, full row accounting, deterministic regeneration, train/validation support, opaque held-out gate, and held-out access guard all verified against the real 13,979,592-row population",
+    "note": "T05 accepted independently of T04 and T03-C, per Issue #6 DoD. Authorizes T03-B and T04."
+  }
+}
