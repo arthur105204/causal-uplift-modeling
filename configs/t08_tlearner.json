@@ -1,0 +1,84 @@
+{
+  "schema_version": "t08-tlearner-config-v1",
+  "task": "T08",
+  "issue": 9,
+  "input": {
+    "selector": "configs/data_manifest.json",
+    "split": {
+      "config": "configs/t05_split.json",
+      "required_lifecycle_state": "T05_SPLIT_ACCEPTED"
+    },
+    "preprocessing": {
+      "config": "configs/t04_preprocessing.json",
+      "required_lifecycle_state": "T04_ACCEPTED"
+    },
+    "metrics_interface": {
+      "module": "src.metrics",
+      "src_metrics_sha256": "fc4fef77052f64c883edd1d73ac7cce75946a180ae582fcaad4421b2e9b16b29",
+      "authoritative_t06_run_id": "t06_metrics_20260818T091844Z_167215",
+      "authoritative_t06_definitions_sha256": "384b45acb22ea073667ca346632969bc216b88f70e23ab71bece845a2ef1167a"
+    },
+    "t07_common_validation_cohort": {
+      "note": "T08 reuses the accepted T07 FULL run's evidence read-only, after hash verification -- it is never recomputed. The common validation cohort itself is simply the frozen T05 validation partition, unchanged since T05.",
+      "authoritative_t07_full_run_id": "t07_full_20260818T111446Z_593205",
+      "authoritative_t07_erratum_run_id": "t07_audit_erratum_20260818T150917Z_995999",
+      "reuse_scope": "read-only reference to T07 FULL's tables/model_summary.csv (random/response rows) and hash-verified models/response_model.txt + development prediction parquets; the 200-draw random-ranking distribution and Response fit are never recomputed by T08"
+    }
+  },
+  "decision_record": {
+    "question": "What scale-gating path and SMOKE workload does T08's two-arm T-Learner fit need under D30, and what LightGBM configuration governs mu1/mu0?",
+    "evidence_considered": [
+      "D30: SMOKE -> [RESOURCE GATE(S) if required] -> FULL; RESOURCE gate count/rationale is a per-task judgment recorded before FULL",
+      "T07 FULL already proved src/lightgbm_baseline.fit_binary_classifier at full scale (9,785,714 rows, ~29 min, no OOM) with the identical frozen config",
+      "T-Learner's two arm-specific fits are each on populations smaller than T07's already-proven scale (8,317,858 treated, 1,467,856 control)",
+      "docs/05_methodology_scope.md: cross-fitting is NOT required for T-Learner (unlike X-Learner/DR-Learner), so no new computational pattern is introduced",
+      "docs/05_methodology_scope.md T-Learner section: 'the same base-learner family and frozen configuration for both surfaces' -- prescriptive, not just a default",
+      "T05 frozen (T,Y) support (train_support.json/validation_support.json): the binding smoke-support constraint is the control-arm converter cell (T=0,Y=1), rarer in validation-relative-allocation than in train-relative-allocation because validation is only ~17.65% of any proportional draw"
+    ],
+    "decision": "SMOKE -> FULL. resource_gates = 0. smoke_size = 200000 total development rows (train+validation combined, joint-(T,Y)-stratified, seed 42), a T08-local reproducibility/config value, not inherited from T07's smoke_size and not a global constant.",
+    "why_200000_not_100000": "At 100,000, the binding cell (validation T=0,Y=1, the control arm's early-stopping eval set positive class) allocates to only ~5 rows -- too thin to reliably exercise mu0's early-stopping/serialization code path on non-degenerate binary structure. At 200,000, the same cell allocates to ~10, giving meaningful headroom while remaining clearly bounded/development-only (well under FULL's 11,882,652-row scale).",
+    "why_not_resource_gate": "The resource-risk trigger in D30 is not met: the fitting mechanism is already proven at full scale by T07, T-Learner's per-arm populations are each smaller than what's already proven, and T-Learner has no cross-fitting or other qualitatively new computational pattern. Running two sequential fits instead of one is additive wall-clock, not a new resource-risk category.",
+    "smoke_purpose": "Engineering/correctness rehearsal only -- proves both arm-specific fits execute on genuinely non-degenerate (both-outcome-class) data, full artifact/reload/hash mechanics work, and tau construction/alignment/sign logic works. It is not a performance estimate and must not be treated as one. If any required arm/outcome cell is degenerate (empty) at the actual allocated counts, SMOKE fails closed rather than the sample being adjusted after seeing model results."
+  },
+  "scale_gating": {
+    "policy": "D30",
+    "stages": "SMOKE -> FULL",
+    "resource_gates": 0,
+    "smoke_size": 200000,
+    "smoke_seed": 42,
+    "smoke_selection_rule": "one deterministic joint-(T,Y)-stratified train_test_split draw per partition (train, validation), quota-proportional to the frozen train:validation split sizes, seed 42; held-out never sampled or read; no model score or metric enters selection",
+    "full_authorized_this_run": false
+  },
+  "lightgbm": {
+    "frozen_version": "4.7.0",
+    "config_module": "src.lightgbm_baseline",
+    "config_hash_function": "src.lightgbm_baseline.config_hash",
+    "src_lightgbm_baseline_sha256": "ed69bc7c257671825433b41c2025fd04ba1172166a60b8628a5b068233ea95a1",
+    "identical_config_for_mu1_and_mu0": true,
+    "num_boost_round_cap": 2000,
+    "early_stopping_rounds": 50,
+    "seed": 42,
+    "tuning": "none -- one predeclared configuration, reused unchanged from T07, for both arm surfaces"
+  },
+  "tlearner_module": {
+    "module": "src.tlearner",
+    "src_tlearner_sha256": "d171cd3a12516debe99f3b5cae9aad6566287a6fc4622f116002f7798c473bb2",
+    "provides": ["partition_by_arm", "assert_aligned_predictions", "compute_tau", "reconcile_reloaded_tau"]
+  },
+  "preprocessing": {
+    "transform_fit_scope": "IdentityFeatureTransform fit ONCE on the full/smoke train partition (not per-arm); arm-subsetting happens on the already-transformed X/y/T via boolean masks. No new preprocessing semantics invented."
+  },
+  "scope_guards": {
+    "fit_on_validation_or_held_out": false,
+    "access_held_out_labels_or_features": false,
+    "select_config_from_metrics": false,
+    "reimplement_t06_metric_formulas": false,
+    "recompute_t07_response_or_random_reference": false,
+    "create_estimator_framework_or_registry": false,
+    "create_internal_t08_notebook": false
+  },
+  "lifecycle_state": "T08_SMOKE_IN_PROGRESS",
+  "lifecycle_state_evidence": {
+    "note": "Updated to T08_SMOKE_ACCEPTED / T08_FULL_ACCEPTED by later turns as evidence is produced; not set here in advance of execution."
+  }
+}
