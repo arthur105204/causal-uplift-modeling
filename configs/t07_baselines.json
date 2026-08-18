@@ -1,0 +1,65 @@
+{
+  "schema_version": "t07-baselines-config-v1",
+  "task": "T07",
+  "issue": 8,
+  "input": {
+    "selector": "configs/data_manifest.json",
+    "split": {
+      "config": "configs/t05_split.json",
+      "required_lifecycle_state": "T05_SPLIT_ACCEPTED"
+    },
+    "preprocessing": {
+      "config": "configs/t04_preprocessing.json",
+      "required_lifecycle_state": "T04_ACCEPTED"
+    },
+    "metrics_interface": {
+      "module": "src.metrics",
+      "note": "T06 never produced a configs/t06_*.json lifecycle file; dependency is recorded by code identity plus the authoritative T06 verification run, not an invented lifecycle state.",
+      "src_metrics_sha256": "fc4fef77052f64c883edd1d73ac7cce75946a180ae582fcaad4421b2e9b16b29",
+      "authoritative_t06_run_id": "t06_metrics_20260818T091844Z_167215",
+      "authoritative_t06_definitions_sha256": "384b45acb22ea073667ca346632969bc216b88f70e23ab71bece845a2ef1167a"
+    }
+  },
+  "decision_record": {
+    "question": "What scale-gating path does T07's Response LightGBM baseline need under D30, and what is the exact frozen model configuration?",
+    "evidence_considered": [
+      "D30: SMOKE -> [RESOURCE GATE(S) if required] -> FULL; RESOURCE gate count/rationale is a per-task judgment recorded before FULL, not a global constant",
+      "T01 production evidence already proves the full-scale (~14M row) data-loading path has no resource failure",
+      "One Response LightGBM binary classifier over 12 numeric features is a small/medium regime for the library, not materially unproven or materially more complex than the already-validated T01 data path",
+      "ADR-base-learner: objective=binary for factual-outcome models; no hyperparameter is contract-mandated beyond seed=42 and early_stopping_rounds<=50 (docs/06)"
+    ],
+    "decision": "SMOKE -> FULL. resource_gates = 0. smoke_size = 50000 total development rows (train+validation combined), a T07-local reproducibility/config value, not a global scale constant.",
+    "why_not_a_resource_gate": "The resource-risk trigger in D30 (materially unproven resource behavior, or materially greater complexity than an already-validated path) is not met: the data path is already proven at full scale by T01, and LightGBM at ~9.8M rows x 12 features is well within the library's ordinary operating range.",
+    "why_not_more_smoke": "50,000 rows is large enough that every joint-(T,Y) stratum is comfortably non-empty at this dataset's real arm/conversion rates, and small enough for a fast correctness/artifact-mechanism rehearsal; it mirrors this repo's own existing t03_data_integrity_audit.ipynb smoke-size precedent (canonical_unsplit_50K_prefix)."
+  },
+  "scale_gating": {
+    "policy": "D30",
+    "stages": "SMOKE -> FULL",
+    "resource_gates": 0,
+    "smoke_size": 50000,
+    "smoke_seed": 42,
+    "smoke_selection_rule": "one deterministic joint-(T,Y)-stratified train_test_split draw per partition (train, validation), quota-proportional to the frozen train:validation split sizes, seed 42; held-out never sampled or read; no model score or metric enters selection",
+    "full_authorized_this_run": false
+  },
+  "lightgbm": {
+    "frozen_version": "4.7.0",
+    "config_module": "src.lightgbm_baseline",
+    "config_hash_function": "src.lightgbm_baseline.config_hash",
+    "num_boost_round_cap": 2000,
+    "early_stopping_rounds": 50,
+    "seed": 42,
+    "tuning": "none -- one predeclared configuration only"
+  },
+  "scope_guards": {
+    "fit_on_validation_or_held_out": false,
+    "access_held_out_labels_or_features": false,
+    "select_config_from_metrics": false,
+    "reimplement_t06_metric_formulas": false,
+    "create_scale_rungs_module": false,
+    "create_internal_t07_notebook": false
+  },
+  "lifecycle_state": "T07_SMOKE_IN_PROGRESS",
+  "lifecycle_state_evidence": {
+    "note": "Updated to T07_SMOKE_ACCEPTED / T07_FULL_ACCEPTED by later turns as evidence is produced; not set here in advance of execution."
+  }
+}
