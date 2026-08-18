@@ -21,7 +21,7 @@ The protocol inherits the [causal contract](01_causal_contract.md),
 
 | Item | Sprint 1 convention |
 |---|---|
-| Scale progression | D23 requires `50,000` → `500,000` → `2,000,000` → full data; every rung must meet its predeclared correctness/resource gate before promotion. |
+| Scale progression | D30 requires `SMOKE → [RESOURCE GATE(S) if required] → FULL`; SMOKE is mandatory for every task, zero/one/multiple RESOURCE gates are predeclared per estimator's resource risk, and exact SMOKE/RESOURCE workload sizes are task-local config values frozen before execution, not global constants. Superseded from the prior fixed `50,000 → 500,000 → 2,000,000 → full` D23 progression (`D23`, superseded 2026-08-18); T01-T06 evidence produced under D23 is retained unchanged. |
 | Data tools | Pandas + PyArrow are the D20 default. Polars or DuckDB may replace a failing operation only after the ADR-data-stack benchmark verifies row alignment, schema, identity, runtime, and peak memory at the applicable scale. |
 | Numeric precision | `float64` is the D09 primary analytical precision; `float32` is sensitivity-only unless a new owner-approved decision changes it. |
 | Sampling seed | `42`. |
@@ -44,11 +44,11 @@ The protocol inherits the [causal contract](01_causal_contract.md),
 | Missing features | Preserve missing `f0`–`f11` values for LightGBM native handling; no imputation or added missingness feature. Missingness is still reported. |
 | Secondary outcome | If present and binary, `visit` is evaluated only as a predeclared secondary robustness outcome. It never replaces primary `Y=conversion`, enters `X`, filters rows, or selects a model. |
 
-The D23 scale rungs are resource/correctness promotion gates, not candidate
-sample sizes from which a favorable metric may be selected. Every attempted
-rung and its disposition is recorded before moving forward. The final evaluated
-population must be fixed before model selection and cannot be chosen by comparing
-validation or test metrics.
+The D30 SMOKE/RESOURCE stages are resource/correctness promotion gates, not
+candidate sample sizes from which a favorable metric may be selected. Every
+attempted stage and its disposition is recorded before moving forward. The
+final evaluated population must be fixed before model selection and cannot be
+chosen by comparing validation or test metrics.
 
 ## Partition roles
 
@@ -92,9 +92,10 @@ counts/rates; they may be populated only after authorized release.
 4. Preserve `_source_row_id` as the original zero-based canonical source-row
    ordinal through conversion and any sampling; do not renumber retained rows
    before splitting.
-5. Execute only the current D23 scale rung. Promote from 50K to 500K to 2M to
-   full data only after its predeclared correctness/resource evidence passes;
-   do not introduce an unregistered sample-size fallback.
+5. Execute only the current D30 SMOKE/RESOURCE stage. Promote to the next
+   predeclared stage, and finally to FULL, only after its predeclared
+   correctness/resource evidence passes; do not introduce an unregistered
+   sample-size fallback.
 6. If `visit` is present, validate its binary label schema and predeclare its
    secondary-outcome tables before development. Do not use it for primary model
    fitting, promotion, threshold selection, or population filtering.
@@ -264,10 +265,11 @@ seeds; it does not promote the best seed.
 
 - A pre-release HARD_GATE or ADR-gate failure is corrected and rerun without
   test access; failed evidence is retained.
-- A resource failure stops the current D23 scale rung and records the failure.
-  Work may remain at the last passed rung for development, but held-out scope
-  cannot be silently changed to an unregistered sample size; progression or
-  deferral requires the applicable predeclared gate and owner-approved decision.
+- A resource failure stops the current D30 SMOKE/RESOURCE stage and records the
+  failure. Work may remain at the last passed stage for development, but
+  held-out scope cannot be silently changed to an unregistered sample size;
+  progression or deferral requires the applicable predeclared gate and
+  owner-approved decision.
 - A software failure after test release may be rerun only if the frozen models,
   predictions, metric code, and inputs are unchanged and the rerun is purely
   mechanical. Otherwise the current test is consumed and a genuinely new test
@@ -336,13 +338,13 @@ significance thresholds.
 
 ### Verification gate
 
-The tolerances must be tested on the 50K smoke run.
+The tolerances must be tested on the SMOKE run.
 
 If they fail:
 
 1. investigate threading, batching, library and hardware causes;
 2. record the observed deterministic envelope;
-3. update the ADR before promotion to 500K;
+3. update the ADR before promotion to any RESOURCE gate or to FULL;
 4. do not silently relax tolerances after test access.
 
 ### Stochastic variation
@@ -354,4 +356,5 @@ This higher-precedence experiment policy supplies the frozen defaults and
 acceptance rule for the base-learner, data-stack, Causal Forest, and artifact ADR
 verification gates. It supersedes any lower-precedence `OPEN_DECISION` or
 `FREEZE_BLOCKER` wording about numeric reproducibility tolerance; Sprint 2 gate
-evidence may trigger only the documented pre-500K amendment path above.
+evidence may trigger only the documented pre-RESOURCE-gate/pre-FULL amendment
+path above.

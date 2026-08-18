@@ -15,7 +15,11 @@ The owner-approved `decision_register.csv` controls this ADR:
   selection of its exact implementation provisional through this ADR.
 - D22 defers any Python–R or other cross-language bridge unless this ADR proves
   that it is required after Python options are evaluated.
-- D23 requires staged resource promotion from 50K to 500K to 2M to full data.
+- D30 requires `SMOKE → [RESOURCE GATE(S) if required] → FULL`; Causal Forest's
+  materially greater complexity and resource risk relative to the already-
+  validated Response/T-Learner/X-Learner paths means it requires SMOKE followed
+  by one or more predeclared RESOURCE gates before FULL (superseded from the
+  prior fixed `D23` 50K→500K→2M→full progression, superseded 2026-08-18).
 
 This ADR implements those accepted decisions. It does not defer, omit, or
 redefine Causal Forest itself. Causal Forest remains planned for Sprint 2 and is
@@ -46,7 +50,8 @@ first and document:
    and exact prediction/artifact schemas;
 5. compatibility with numeric `f0`–`f11`, missing-value policy, source-row
    identity, and the frozen train/validation/test boundary;
-6. feasibility at the D23 50K, 500K, 2M, and full-data scale gates; and
+6. feasibility at the applicable D30 SMOKE, RESOURCE gate(s), and full-data
+   scale gates; and
 7. license, maintenance, runtime, peak memory, and integration cost.
 
 A Python–R or other cross-language bridge remains **DEFERRED**. It may be
@@ -73,8 +78,13 @@ test release:
 4. **Honesty/support gate:** verify the selected honesty/sample-splitting rule,
    treatment/control support, minimum leaf/arm behavior, nuisance handling, and
    any claimed variance/interval semantics.
-5. **Resource gate:** pass the predeclared D23 50K→500K→2M→full progression for
-   correctness, runtime, and peak memory; a smaller gate cannot select the final
+5. **Resource gate(s):** pass a predeclared D30 `SMOKE → one or more RESOURCE
+   gates → FULL` progression for correctness, runtime, and peak memory. Given
+   Causal Forest's stronger resource-risk profile, this ADR requires at least
+   one RESOURCE gate before FULL (never zero, unlike a simpler validated
+   estimator); the exact number and workload size of RESOURCE gates is resolved
+   in the Causal Forest CODE PLAN before execution, not selected after observing
+   model performance. No gate, however many are declared, can select the final
    comparator from held-out performance.
 6. **Validation gate:** compare against the frozen T-Learner and X-Learner using
    validation-only metrics and a promotion rule approved before the comparison.

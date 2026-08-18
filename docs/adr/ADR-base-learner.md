@@ -62,7 +62,8 @@ training and validation only under the
 2. factual-outcome/nuisance diagnostics without interpreting them as causal
    ranking performance;
 3. stability across the predeclared seeds;
-4. correctness and resource feasibility at the D23 scale gates;
+4. correctness and resource feasibility at the applicable D30 SMOKE/RESOURCE
+   scale gates;
 5. feature allowlist, row alignment, and absence of fold/test leakage; and
 6. serialization and reload behavior under the reproducibility rules in
    document 06.

@@ -92,7 +92,8 @@ post-result replacement.
 
 Input selection is fail-closed through an explicit manifest. Silent filename
 heuristics and silent scale fallback are not protocol options. A scale failure
-is recorded and handled through the D23 promotion process before test access.
+is recorded and handled through the D30 SMOKE/RESOURCE promotion process before
+test access.
 
 ## Metric hierarchy
 

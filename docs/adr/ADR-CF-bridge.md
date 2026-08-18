@@ -26,10 +26,14 @@ The bridge may be proposed only when all of the following are documented:
 2. the cross-language candidate provides that capability and passes the same CF
    correctness, synthetic-effect, leakage, honesty/support, resource,
    validation, seed, and pre-test-freeze gates;
-3. a 50K Sprint 1 smoke protocol proves deterministic transfer, row alignment,
-   treatment/outcome coding, and prediction return; and
-4. a 50K Sprint 2 benchmark, followed by the applicable D23 scale gates, shows
+3. a task-declared SMOKE benchmark (D30) proves deterministic transfer, row
+   alignment, treatment/outcome coding, and prediction return; and
+4. the applicable D30 RESOURCE gate(s), if the bridge is ever activated, show
    that integration cost and resource use are acceptable.
+
+(Execution criterion amended by D30, superseded 2026-08-18, from the prior
+fixed `D23` 50K-benchmark wording; this ADR's `DEFERRED` status and
+Python-first/cross-language fallback semantics are unchanged.)
 
 Activation changes the implementation boundary and therefore requires an ADR
 amendment linked to the owner-approved register. Test results cannot activate the

@@ -2,7 +2,8 @@
 
 **Status:** PROVISIONAL  
 **Decision authority:** Owner-approved `decision_register.csv` decisions D09,
-D19, D20, D21, and D23  
+D19, D20, D21, D23 (superseded by D30 for forward scale-gating; T01's own
+execution evidence under D23 is retained unchanged), and D30  
 **Sprint 1 assessment:** PASS_WITH_LIMITATION  
 **Execution status:** T01_DATA_ENGINEERING_VERIFIED; D20_FALLBACK_PROVISIONAL;
 FULL_ENVIRONMENT_LOCK_UNAVAILABLE
@@ -81,8 +82,11 @@ and interpretation.
 
 ## Scale failure
 
-D23 defines the 50K→500K→2M→full correctness/resource progression. Failure at a
-scale gate does not authorize a silent 2M→1M or other unregistered fallback.
+D30 defines the `SMOKE → [RESOURCE GATE(S) if required] → FULL`
+correctness/resource progression (superseded from the prior fixed `D23`
+50K→500K→2M→full progression, superseded 2026-08-18; T01's own execution
+evidence under D23 is retained unchanged). Failure at a SMOKE or RESOURCE stage
+does not authorize a silent unregistered sample-size fallback.
 
 T01-D04 defines failure operationally: OOM/process termination, incorrect or
 incomplete execution, sustained severe system-memory/pagefile pressure that

@@ -44,7 +44,7 @@ Run All reconciled to expected artifacts. `tests pass != clean Run All succeeds`
 CLAUDE.md is operational guidance only and never overrides the decision register, frozen
 contracts/protocols, accepted ADRs/evidence, or Issue wording.
 
-1. `docs/decision_register.csv` — owner-approved decisions (`D01`–`D29`), in Vietnamese.
+1. `docs/decision_register.csv` — owner-approved decisions, in Vietnamese.
 2. Numbered contracts in `docs/` (`01_causal_contract`, `02_data_contract`, `06_experiment_protocol`,
    `07_metric_specification`, …) and ACCEPTED ADRs in `docs/adr/`.
 3. Accepted empirical evidence, then Issue wording, then existing code.
@@ -66,8 +66,10 @@ Enforced in code by `src/data.py` and re-asserted in every notebook:
 - D09 primary analytical precision is `float64`; `float32` is a sensitivity projection only.
 - Keep every released row by default (D07, `docs/04`). Duplicate/dedup/weighting analyses are
   sensitivity analyses only; rows may be excluded only on a predeclared hard-integrity gate failure.
-- Outer split 70/15/15, joint `(T,Y)` stratification, seed `42`; D23 scale rungs
-  50K → 500K → 2M → full.
+- Outer split 70/15/15, joint `(T,Y)` stratification, seed `42`; D30 scale-gating
+  policy `SMOKE → [RESOURCE GATE(S) if required] → FULL` (task-local,
+  predeclared SMOKE/RESOURCE sizes; supersedes the prior fixed D23
+  50K→500K→2M→full progression, superseded 2026-08-18).
 - Held-out test data is untouchable until T17. No unofficial held-out diagnostics, no tuning on
   test-derived information. If an operation would read held-out performance, stop.
 

@@ -150,8 +150,9 @@ be selected using test results.
 X-Learner enters the pre-test shortlist only when:
 
 1. correctness tests pass;
-2. the D23 50K→500K→2M→full scale/resource gates pass for the intended run
-   scope, or a documented pre-test amendment bounds the executable scope;
+2. the applicable D30 SMOKE→[RESOURCE GATE(S) if required]→FULL scale/resource
+   gates pass for the intended run scope, or a documented pre-test amendment
+   bounds the executable scope;
 3. configuration is selected using validation only from the predeclared
    candidates that passed correctness/resource gates: choose the largest
    `qini_above_random`; differences within the scalar tolerance in document 06
@@ -181,8 +182,8 @@ Under `outputs/runs/<run_id>/`, retain and hash at least:
 - `models/xlearner_<component>.txt` for nuisance and `tau0`/`tau1` effect stages;
 - `predictions/development/xlearner/seed_<seed>/validation_predictions.parquet`;
 - `tables/validation_selection.csv` and `tables/xlearner_deciles.csv`;
-- `audit/xlearner_correctness.json` and the applicable D23 runtime/resource
-  report; and
+- `audit/xlearner_correctness.json` and the applicable D30 SMOKE/RESOURCE
+  runtime/resource report; and
 - after authorized test release, the authoritative prediction path required by
   the experiment-artifact ADR.
 

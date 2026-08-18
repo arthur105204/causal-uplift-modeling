@@ -221,11 +221,12 @@ Before pre-test release, a synthetic or development-only dry run must verify:
 ## Status transition
 
 Sprint 1 freezes this contract but does not require execution evidence. This ADR
-becomes **ACCEPTED** only after a successful 50K development-only dry run verifies
-paths, schemas, immutable run directories, manifest reconciliation, model reload
-within the frozen tolerance, test isolation, and authoritative prediction
-artifacts including downstream hash references. If any check fails or remains
-undefined, the ADR remains **PROVISIONAL** and must be amended before a 500K run.
+becomes **ACCEPTED** only after a successful SMOKE development-only dry run (D30)
+verifies paths, schemas, immutable run directories, manifest reconciliation,
+model reload within the frozen tolerance, test isolation, and authoritative
+prediction artifacts including downstream hash references. If any check fails or
+remains undefined, the ADR remains **PROVISIONAL** and must be corrected before
+any RESOURCE gate or FULL execution.
 
 ## Fallback
 
@@ -241,8 +242,8 @@ under a new `run_id`, and create a new freeze manifest.
 - New manifests make the freeze and artifact lineage explicit.
 - Ambiguous legacy files remain non-authoritative until linked by a verified
   manifest.
-- This ADR follows the 50K status-transition rule above; no Sprint 1 execution
-  evidence or present PASS is required or asserted.
+- This ADR follows the SMOKE status-transition rule above (D30); no Sprint 1
+  execution evidence or present PASS is required or asserted.
 
 ## Artifact retention policy
 
