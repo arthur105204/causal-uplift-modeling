@@ -306,5 +306,95 @@ Deletion requires:
 - Run folders are immutable after completion.
 - A rerun creates a new run ID.
 - No successful artifact may be silently overwritten.
-- Corrections require invalidation of the affected run and creation of
-  a replacement run.
+- A completed run's folder is never edited in place, and its files are never
+  re-derived to "fix" them. Every correction takes exactly one of two forms,
+  chosen by what the defect actually affects. If it is unclear which form
+  applies, it is Class A.
+
+#### Class A: scientific correction
+
+The defect affects, or could plausibly affect, the model, its configuration,
+the analyzed population, predictions, metrics, or the lineage connecting them.
+The affected run remains immutable and untouched; its invalidation is recorded
+externally (in a new record referencing it, never inside it), and a complete
+replacement governed run is produced under a new `run_id`. No partial
+correction is authorized for this class.
+
+#### Class B: audit-only erratum
+
+The defect affects only metadata or reporting fields -- run-level bookkeeping,
+labeling, or measurement of something ancillary to the result -- and does not
+change, and is proven not to change, any model, configuration, population,
+prediction, or metric value. An audit-only erratum is authorized only when all
+of the following hold:
+
+1. **Scientific hash reconciliation.** Every applicable scientific artifact of
+   the affected run is proven unchanged by recomputing its SHA-256 from the
+   still-untouched original file and comparing it to the hash already recorded
+   by that run's own artifact manifest -- not merely asserted. This covers, at
+   minimum and by category: every serialized model artifact; every
+   authoritative development/prediction artifact; every metric or table
+   artifact carrying a scientific result; the frozen `config_hash` (recomputed
+   from the run's own recorded configuration and checked for self-consistency,
+   not merely copied); the data/split/population identity fields (checked
+   against their own authoritative sources); and the code/metric-definition
+   identity fields already frozen and recorded (checked against the current
+   source files). The run's own `run_config.json` may itself contain the
+   defective field being corrected, so its overall file hash is never treated
+   as proof that its *content* is trustworthy; each of its unaffected
+   scientific fields is reconciled individually against its own independent
+   source.
+2. **Untouched original.** The original run's folder, and every file inside
+   it, remains byte-for-byte unchanged -- confirmed by recomputing every
+   listed artifact's hash and confirming the file set on disk exactly matches
+   the file set the original manifest recorded, with nothing added or
+   removed.
+3. **Erratum record.** A new, separately governed erratum record is created,
+   under its own new `run_id` and the same immutable-run-root convention as
+   any other governed run, naming: the affected run's `run_id`; the exact
+   field path(s) being superseded; the old (incorrect) value(s); the corrected
+   value(s); the reason; and the scientific-hash-reconciliation result that
+   authorized the erratum.
+4. **Fail closed.** If any scientific hash or identity check in (1) does not
+   match, the erratum is refused and the defect is handled as Class A instead.
+5. **Superseding scope.** The erratum record supersedes only the explicitly
+   named field(s), for reporting purposes only. The original run's files
+   remain the sole physical record of what was actually produced at execution
+   time; a reader reconciles a corrected value by consulting the original run
+   and its erratum record together. Scientific results remain authoritative
+   only for as long as, and precisely because, (1) proved them unchanged.
+6. **Never scientific.** An erratum may never alter, in effect or in
+   appearance, model performance, ranking metrics, the analyzed population,
+   configuration, predictions, or any methodological decision. Any correction
+   that would touch those is Class A, regardless of how it is framed.
+
+#### Erratum-run control artifacts
+
+An erratum run is itself a governed run under `outputs/runs/<run_id>/` and is
+bound by the same immutable-run-root rule as any other. It uses exactly the
+required control artifacts applicable to a run that performs no data-engineering,
+audit-gate, or held-out work: `audit/environment.json`, `audit/run_config.json`,
+and `audit/artifact_manifest.json`, plus `audit/erratum.json` carrying the
+correction and reconciliation content above. `audit/pretest_freeze.json` and
+`audit/audit_summary.csv`/`audit/audit_report.md` are not produced -- consistent
+with every other non-freeze, non-audit-gate governed run in this project, since
+those three are scoped to Stage 5 pre-test freeze and to docs/03's HG-01..HG-07
+audit-ID vocabulary respectively, neither of which an erratum run executes. An
+erratum run produces no model, prediction, or metric artifact of its own.
+
+#### Resource-measurement validity (forward rule)
+
+A resource-evidence field may be labeled a peak-memory measurement only when it
+comes from a valid stage-scoped peak measurement: either (a) the measured stage
+ran within its own clean process boundary and the value comes from that
+process's OS/runtime historical-peak counter, or (b) a correctly scoped
+continuous sampler actually tracked the running maximum throughout the stage.
+Two arbitrary before/after instantaneous RSS (or equivalent) samples must never
+be labeled a peak or a peak-delta. If a stage-specific peak cannot be
+established by either valid mechanism, the field is recorded as
+`NOT_COMPARABLE` or `UNAVAILABLE` with a stated reason, not fabricated or
+approximated. Wall time, completion status, and OOM/termination status remain
+reportable independently of whether a peak-memory value is available. This
+rule is platform-neutral and does not mandate a specific OS or runtime
+mechanism (Kaggle sessions and local environments may use different valid
+mechanisms).
