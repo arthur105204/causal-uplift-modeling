@@ -11,11 +11,15 @@ small, deliberately conservative data layer plus a Kaggle-first notebook series.
 `AGENTS.md` is the authoritative operating contract for agents in this repo. Read it before
 any non-trivial work. The rules below are the parts most likely to be violated by accident.
 
-**Kaggle is the primary execution environment.** The active notebook series lives under
-`kaggle/00_project_overview.ipynb` through `kaggle/07_final_story.ipynb`; GitHub Issue #20
-(`[MASTER]`) is the authoritative execution plan and task-to-notebook mapping. `notebooks/legacy/`
-holds the pre-reset notebooks, retained as historical evidence — their accepted results are
-inherited, not re-derived, and they are not edited going forward.
+**Kaggle is the primary execution environment.** The public-facing notebook series lives under
+`kaggle/01_data_understanding.ipynb` through `kaggle/04_final_evaluation.ipynb` — a reader-facing
+data-science story, intentionally *not* a 1:1 mirror of the GitHub Issue/task structure. GitHub
+Issue #20 (`[MASTER]`) is the authoritative execution plan and task-to-notebook mapping; several
+Issues write into the same public notebook. Heavy or held-out-sensitive compute (e.g. Causal Forest
+training) may live in `notebooks/internal/` when that materially improves runtime isolation,
+resource management, held-out isolation, or repeatability — never merely because a task has a
+number. `notebooks/legacy/` holds the pre-reset notebooks, retained as historical evidence — their
+accepted results are inherited, not re-derived, and they are not edited going forward.
 
 ## Commands
 
@@ -126,11 +130,13 @@ in a final claim, it earns run-scoped evidence; if it is illustrative or explora
 
 ## Notebook-first, not notebook-only
 
-`kaggle/00_project_overview.ipynb` through `kaggle/07_final_story.ipynb` are the primary research
-artifacts (see Issue #20 for the exact task-to-notebook mapping). Each must expose the question,
-protocol, core computation, verification, observations, interpretation, and limitations — never
-become a thin wrapper around opaque helpers. Each notebook reads as a first-time presentation of
-the current study: it does not narrate earlier versions, prior runs, or redesign history.
+`kaggle/01_data_understanding.ipynb` through `kaggle/04_final_evaluation.ipynb` are the primary
+public research artifacts (see Issue #20 for the exact task-to-notebook mapping). Each must expose
+the question, protocol, core computation, verification, observations, interpretation, and
+limitations — never become a thin wrapper around opaque helpers. Each notebook reads as a
+first-time presentation of the current study: it does not narrate earlier versions, prior runs,
+architecture migrations, or redesign history — and does not expose internal task codes (`T05`,
+`HG-01`, …) in reader-facing headings or prose.
 
 Code moves into `src/` only when reuse, correctness, or an authoritative contract justifies it —
 which is why `src/data.py` holds hashing/manifest/Parquet mechanics and `src/audit.py` holds

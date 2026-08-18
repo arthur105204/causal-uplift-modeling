@@ -55,11 +55,14 @@
 
    For T02–T18, follow the current GitHub Issue and the MASTER execution
    architecture (Issue #20). Kaggle is the primary execution environment; the active
-   notebook series is `kaggle/00_project_overview.ipynb` through
-   `kaggle/07_final_story.ipynb`, mapped to Issues in #20. `notebooks/legacy/*.ipynb`
-   holds the pre-reset notebooks as historical evidence — inherited, not re-derived,
-   and not edited going forward. Do not invent a second planning system: GitHub
-   Issues are the execution plan.
+   notebook series is `kaggle/01_data_understanding.ipynb` through
+   `kaggle/04_final_evaluation.ipynb` — a reader-facing story, deliberately
+   different from the GitHub Issue/task structure it draws on (see MASTER #20 for
+   the exact task-to-notebook mapping). Heavy or held-out-sensitive computation may
+   live in `notebooks/internal/` when justified; it is not reader-facing.
+   `notebooks/legacy/*.ipynb` holds the pre-reset notebooks as historical
+   evidence — inherited, not re-derived, and not edited going forward. Do not
+   invent a second planning system: GitHub Issues are the execution plan.
 
    Default lifecycle:
 

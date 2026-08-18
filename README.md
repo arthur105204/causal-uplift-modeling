@@ -3,8 +3,10 @@
 ## Project status
 
 This project develops causal uplift models on CRITEO-UPLIFTv2.1 through a fixed
-sequence of Kaggle notebooks (`kaggle/00_project_overview.ipynb` through
-`kaggle/07_final_story.ipynb`). The causal, data, audit, methodology, experiment,
+sequence of public Kaggle notebooks (`kaggle/01_data_understanding.ipynb` through
+`kaggle/04_final_evaluation.ipynb`) that tell the data-science story; GitHub
+Issues remain the internal execution/task system the notebooks draw on — the
+two are deliberately not a 1:1 mirror. The causal, data, audit, methodology, experiment,
 metric, and artifact contracts in `docs/` are frozen. Current task status and the
 execution plan are tracked live in GitHub Issues, with
 [Issue #20](https://github.com/arthur105204/causal-uplift-modeling/issues/20)
@@ -74,7 +76,7 @@ hyperparameters, seeds, ranking rules, or claims.
 ## Repository structure
 
 ```text
-kaggle/        primary Kaggle-first notebook series (00 overview through 07 final story)
+kaggle/        public Kaggle notebook story (01 data understanding through 04 final evaluation)
 configs/       non-secret example manifests/configurations
 data/          local raw and processed data; only data/README.md is versioned
 docs/          decision register, specifications, ADRs, Sprint plan, and reviews
