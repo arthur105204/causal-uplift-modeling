@@ -13,8 +13,8 @@ any non-trivial work. The rules below are the parts most likely to be violated b
 
 **Kaggle is the primary execution environment.** The active notebook series lives under
 `kaggle/00_project_overview.ipynb` through `kaggle/07_final_story.ipynb`; GitHub Issue #20
-(`[MASTER]`) is the authoritative execution plan and task-to-notebook mapping. `notebooks/*.ipynb`
-holds the four pre-reset notebooks, retained as historical evidence — their accepted results are
+(`[MASTER]`) is the authoritative execution plan and task-to-notebook mapping. `notebooks/legacy/`
+holds the pre-reset notebooks, retained as historical evidence — their accepted results are
 inherited, not re-derived, and they are not edited going forward.
 
 ## Commands
