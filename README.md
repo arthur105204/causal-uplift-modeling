@@ -80,7 +80,7 @@ kaggle/        public Kaggle notebook story (01 data understanding through 04 fi
 configs/       non-secret example manifests/configurations
 data/          local raw and processed data; only data/README.md is versioned
 docs/          decision register, specifications, ADRs, Sprint plan, and reviews
-notebooks/legacy/  historical evidence from the pre-reset architecture; inherited, not re-derived
+notebooks/legacy/  retained prior evidence, kept for provenance; inherited, not re-derived
 outputs/       immutable run-scoped machine-readable empirical evidence; ignored by Git
 src/           optional reusable machinery when concretely justified
 tests/         optional or task-required automated regression verification when justified
