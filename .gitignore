@@ -73,3 +73,4 @@ desktop.ini
 # Tool-local state
 .agents/
 .codex/
+.claude/

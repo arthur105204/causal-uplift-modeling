@@ -59,8 +59,6 @@ estimand, population, or test boundary.
 - [`00_project_overview.md`](00_project_overview.md): derived specification map.
 - [`literature_review_matrix.md`](literatures/literature_review_matrix.md): bounded research
   grounding and non-claims.
-- [`REPRODUCIBILITY.md`](../REPRODUCIBILITY.md): non-executing environment and
-  phase guidance.
 - [`sprint1_spec_review.md`](sprint1_spec_review.md): final consistency review.
 - [`sprint1_freeze_checklist.md`](sprint1_freeze_checklist.md): row-level freeze
   decision evidence.

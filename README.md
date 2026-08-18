@@ -2,15 +2,16 @@
 
 ## Project status
 
-Current phase: **Sprint 2 — T01 implemented and awaiting independent review**.
-
-Sprint 1 froze the causal, data, audit, methodology, experiment, metric, and
-artifact contracts. T01 decision evidence has been reviewed and its loader,
-determinism, row-identity, resource, manifest, and Parquet-layout decisions are
-accepted. The notebook-first production data pipeline has now been executed with
-run-scoped verification evidence; its resource interpretation is a warning, not
-a failed correctness gate. No model training, split construction, or official
-held-out evaluation has occurred or is authorized at this stage.
+This project develops causal uplift models on CRITEO-UPLIFTv2.1 through a fixed
+sequence of Kaggle notebooks (`kaggle/00_project_overview.ipynb` through
+`kaggle/07_final_story.ipynb`). The causal, data, audit, methodology, experiment,
+metric, and artifact contracts in `docs/` are frozen. Current task status and the
+execution plan are tracked live in GitHub Issues, with
+[Issue #20](https://github.com/arthur105204/causal-uplift-modeling/issues/20)
+(`[MASTER]`) as the authoritative overview — that is the source of truth for what
+is complete, in progress, or pending, rather than this file. No model training,
+split construction, or held-out evaluation is authorized before its predecessor
+tasks in that plan are complete.
 
 ## Research objective
 
@@ -73,10 +74,11 @@ hyperparameters, seeds, ranking rules, or claims.
 ## Repository structure
 
 ```text
+kaggle/        primary Kaggle-first notebook series (00 overview through 07 final story)
 configs/       non-secret example manifests/configurations
 data/          local raw and processed data; only data/README.md is versioned
 docs/          decision register, specifications, ADRs, Sprint plan, and reviews
-notebooks/      primary research execution, evidence, verification, and interpretation narrative
+notebooks/     historical evidence from the pre-reset architecture; inherited, not re-derived
 outputs/       immutable run-scoped machine-readable empirical evidence; ignored by Git
 src/           optional reusable machinery when concretely justified
 tests/         optional or task-required automated regression verification when justified
@@ -84,11 +86,11 @@ scripts/       optional supporting automation when concretely justified
 archive/       historical local material; ignored and non-authoritative
 ```
 
-From Sprint 2 empirical execution onward, the project is notebook-first, not
-notebook-only. The relevant notebook must expose the question, pre-execution
-protocol, code, checks, observations, interpretation, and limitations. Reusable
-modules, scripts, and tests support that narrative only when reuse, correctness,
-an authoritative contract, or unreasonable notebook duplication justifies them.
+The project is notebook-first, not notebook-only. The relevant notebook must
+expose the question, pre-execution protocol, code, checks, observations,
+interpretation, and limitations. Reusable modules, scripts, and tests support
+that narrative only when reuse, correctness, an authoritative contract, or
+unreasonable notebook duplication justifies them.
 
 ## Data policy
 
@@ -109,6 +111,10 @@ The authority hierarchy, specification map, and ADR statuses are maintained in
 
 ## Reproducibility
 
-Sprint boundaries, local environment setup, configuration rules, and artifact
-policy are documented in [REPRODUCIBILITY.md](REPRODUCIBILITY.md). Sprint 1 does
-not provide an exact environment lockfile or claim execution evidence.
+Kaggle notebooks under `kaggle/` detect their environment and run against a
+Kaggle-attached input dataset or a local `data/raw/` copy with no other setup.
+For local development against the full data pipeline, dependencies and test
+commands are documented in [`CLAUDE.md`](CLAUDE.md#commands). No exact
+interpreter/package/platform lockfile is frozen at this stage; environment
+identity for consequential runs is captured in the corresponding immutable run
+manifest under `outputs/runs/<run_id>/`, not in this file.
