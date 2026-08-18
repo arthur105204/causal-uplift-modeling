@@ -1,0 +1,48 @@
+{
+  "schema_version": "t04-preprocessing-config-v1",
+  "task": "T04",
+  "issue": 5,
+  "input": {
+    "selector": "configs/data_manifest.json",
+    "predecessor": {
+      "task": "T03",
+      "config": "configs/t03_audit.json",
+      "required_lifecycle_state": "T03_DEVELOPMENT_INTEGRITY_COMPLETE"
+    },
+    "split": {
+      "config": "configs/t05_split.json",
+      "required_lifecycle_state": "T05_SPLIT_ACCEPTED"
+    }
+  },
+  "decision_record": {
+    "question": "What do the T03 evidence and each mandatory learner's API actually require, before any transform is written?",
+    "evidence_considered": [
+      "T03-A ED-01: zero missing values across all twelve features on the full released population",
+      "docs/06 Stage 0 item 3 / frozen rule: preserve missing f0-f11 for LightGBM native handling; no imputation, no missingness-indicator feature",
+      "D17: LightGBM is the shared base-learner family for Response, T-Learner, and X-Learner",
+      "Causal Forest's exact implementation remains PROVISIONAL (ADR-CF-implementation); no estimator-specific requirement exists yet to react to"
+    ],
+    "decision": "No-op preprocessing. X stays exactly the ordered f0-f11 columns at float64. No transform is fit beyond an explicit identity selection, which exists only to enforce and test the column/dtype/fit-boundary contract.",
+    "why_not_more": "Nothing in the current evidence or in any implemented learner's API requires imputation, scaling, encoding, or a missingness indicator. Adding one now would be preprocessing for tidiness, not for a concrete requirement, which Issue #5 explicitly prohibits.",
+    "estimator_specific_branches": "None yet. A branch is added only if a future learner's API genuinely cannot accept this shared float64 representation; none does today because no learner is implemented."
+  },
+  "contract_module": "src/preprocessing.py",
+  "contract_version": "t04-preprocessing-v1",
+  "fit_boundary": "train_only",
+  "held_out_application_rule": "apply the identical fitted (no-op) transform to held-out features at T17; no refitting, no held-out-informed adjustment",
+  "scope_guards": {
+    "fit_on_validation_or_held_out": false,
+    "access_held_out_labels_or_features": false,
+    "train_models": false,
+    "add_feature_engineering_for_tidiness": false
+  },
+  "lifecycle_state": "T04_ACCEPTED",
+  "lifecycle_state_evidence": {
+    "authorizing_run_id": "t04_preprocessing_20260818T080330Z_043364",
+    "authorizing_run_manifest": "outputs/runs/t04_preprocessing_20260818T080330Z_043364/audit/artifact_manifest.json",
+    "contract_sha256": "67e669c9ed2b81f81b22af4675529cbb1ecc63883806542546c9fec013cd75fc",
+    "checklist_verified": "T04.1 through T04.8 (Issue #5): decision record written before implementation, no-op contract implemented and content-hashed, fit-on-train-only boundary verified against the real 9,785,714-row train / 2,096,938-row validation split, column order/dtype/determinism/missing-value-passthrough verified on real data, held-out never accessed",
+    "row_counts": {"train": 9785714, "validation": 2096938},
+    "note": "T04 accepted independently, per Issue #5 DoD. Held-out application rule is frozen but not executed until T17."
+  }
+}
