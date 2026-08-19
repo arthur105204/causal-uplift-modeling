@@ -14,11 +14,16 @@ import pandas as pd
 import pytest
 
 from src.lightgbm_baseline import (
+    EFFECT_NUM_BOOST_ROUND,
     FROZEN_BINARY_CONFIG,
+    FROZEN_REGRESSION_CONFIG,
     NUM_BOOST_ROUND_CAP,
     config_hash,
     fit_binary_classifier,
+    fit_regressor,
     predict_probabilities,
+    predict_values,
+    regression_config_hash,
 )
 
 FEATURE_COLUMNS = tuple(f"f{i}" for i in range(12))
@@ -108,3 +113,59 @@ def test_deterministic_refit_same_seed_same_data() -> None:
     np.testing.assert_array_equal(
         predict_probabilities(first, X_val), predict_probabilities(second, X_val)
     )
+
+
+# --- Regression primitive (T09) ---------------------------------------------
+
+def test_binary_config_and_hash_unchanged_by_regression_addition() -> None:
+    """Adding the regression primitive must not alter the existing binary
+    config content or its hash convention."""
+
+    assert FROZEN_BINARY_CONFIG["objective"] == "binary"
+    assert config_hash() == config_hash(FROZEN_BINARY_CONFIG)
+
+
+def test_fit_regressor_uses_fixed_round_count_no_early_stopping() -> None:
+    X_train, y_train = _frame(300, lambda X: X["f0"] + X["f1"], seed=20)
+    model = fit_regressor(X_train, y_train)
+    assert model.num_boost_round == EFFECT_NUM_BOOST_ROUND
+    assert model.booster.num_trees() == EFFECT_NUM_BOOST_ROUND
+
+
+def test_fit_regressor_rejects_binary_objective() -> None:
+    X_train, y_train = _frame(200, lambda X: X["f0"], seed=21)
+    bad_config = dict(FROZEN_REGRESSION_CONFIG)
+    bad_config["objective"] = "binary"
+    with pytest.raises(ValueError, match="regression objective"):
+        fit_regressor(X_train, y_train, config=bad_config)
+
+
+def test_fit_regressor_predicts_signed_continuous_values() -> None:
+    """Pseudo-outcome-like target: signed, continuous, not in [0,1]."""
+
+    X_train, y_train = _frame(400, lambda X: 5 * X["f2"] - 3 * X["f3"], seed=22)
+    model = fit_regressor(X_train, y_train)
+    predictions = predict_values(model, X_train)
+    assert np.isfinite(predictions).all()
+    assert (predictions < 0).any() and (predictions > 0).any()
+
+
+def test_predict_values_rejects_mismatched_columns() -> None:
+    X_train, y_train = _frame(200, lambda X: X["f0"], seed=23)
+    model = fit_regressor(X_train, y_train)
+    bad = X_train.rename(columns={"f0": "f0_renamed"})
+    with pytest.raises(ValueError, match="feature_names"):
+        predict_values(model, bad)
+
+
+def test_regression_config_hash_deterministic_and_distinct_from_binary() -> None:
+    assert regression_config_hash() == regression_config_hash(FROZEN_REGRESSION_CONFIG)
+    assert regression_config_hash() != config_hash()
+
+
+def test_deterministic_refit_regressor_same_seed_same_data() -> None:
+    X_train, y_train = _frame(300, lambda X: X["f4"] - X["f5"], seed=24)
+    first = fit_regressor(X_train, y_train)
+    second = fit_regressor(X_train, y_train)
+    assert first.config_hash == second.config_hash
+    np.testing.assert_array_equal(predict_values(first, X_train), predict_values(second, X_train))

@@ -112,3 +112,93 @@ def predict_probabilities(model: FittedBinaryClassifier, X) -> np.ndarray:
     if tuple(X.columns) != model.feature_names:
         raise ValueError("Prediction frame columns do not match the fitted model's feature_names")
     return np.asarray(model.booster.predict(X, num_iteration=model.best_iteration), dtype=np.float64)
+
+
+# --- Regression primitive (T09): added for X-Learner's effect stage. Does not
+# alter any binary-classifier behavior, config, or hash above. ---
+
+FROZEN_REGRESSION_CONFIG: dict[str, object] = {
+    "objective": "regression",
+    "metric": "l2",
+    "boosting_type": "gbdt",
+    "learning_rate": 0.1,
+    "num_leaves": 31,
+    "max_depth": -1,
+    "min_data_in_leaf": 20,
+    "feature_fraction": 1.0,
+    "bagging_fraction": 1.0,
+    "bagging_freq": 0,
+    "lambda_l1": 0.0,
+    "lambda_l2": 0.0,
+    "seed": 42,
+    "deterministic": True,
+    "force_row_wise": True,
+    "num_threads": 0,
+    "verbosity": -1,
+}
+# Fixed, predeclared round count -- not an empirically optimal value. No valid
+# external eval target exists for X-Learner's pseudo-outcome targets (D0/D1
+# are never defined on validation rows) without inventing a new internal split
+# the frozen contract doesn't require, so the effect stage does not early-stop.
+EFFECT_NUM_BOOST_ROUND = 100
+
+
+def regression_config_hash(config: dict[str, object] | None = None) -> str:
+    """Same hashing convention as config_hash(), for the regression config."""
+
+    payload = dict(config if config is not None else FROZEN_REGRESSION_CONFIG)
+    payload["effect_num_boost_round"] = EFFECT_NUM_BOOST_ROUND
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+@dataclass(frozen=True)
+class FittedRegressor:
+    booster: lgb.Booster
+    num_boost_round: int
+    config_hash: str
+    feature_names: tuple[str, ...]
+
+
+def fit_regressor(
+    X_train,
+    y_train,
+    *,
+    config: dict[str, object] | None = None,
+    seed: int = 42,
+) -> FittedRegressor:
+    """Fit one LightGBM regressor for a fixed EFFECT_NUM_BOOST_ROUND rounds, no
+    early stopping. Rejects a non-regression objective outright -- a binary
+    objective on a signed continuous pseudo-outcome target is simply invalid,
+    not merely inappropriate."""
+
+    effective_config = dict(config if config is not None else FROZEN_REGRESSION_CONFIG)
+    effective_config["seed"] = seed
+    objective = str(effective_config.get("objective", ""))
+    if not objective.startswith("regression"):
+        raise ValueError(f"fit_regressor requires a regression objective, got {objective!r}")
+    frozen_hash = regression_config_hash(effective_config)
+
+    feature_names = tuple(X_train.columns)
+    train_set = lgb.Dataset(X_train, label=y_train, feature_name=list(feature_names), free_raw_data=False)
+
+    booster = lgb.train(
+        effective_config,
+        train_set,
+        num_boost_round=EFFECT_NUM_BOOST_ROUND,
+        callbacks=[lgb.log_evaluation(period=0)],
+    )
+
+    return FittedRegressor(
+        booster=booster,
+        num_boost_round=EFFECT_NUM_BOOST_ROUND,
+        config_hash=frozen_hash,
+        feature_names=feature_names,
+    )
+
+
+def predict_values(model: FittedRegressor, X) -> np.ndarray:
+    """Predict at the fitted regressor's fixed num_boost_round."""
+
+    if tuple(X.columns) != model.feature_names:
+        raise ValueError("Prediction frame columns do not match the fitted model's feature_names")
+    return np.asarray(model.booster.predict(X, num_iteration=model.num_boost_round), dtype=np.float64)
