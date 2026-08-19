@@ -1,0 +1,160 @@
+{
+  "schema_version": "t10-causal-forest-config-v1",
+  "task": "T10",
+  "issue": 11,
+  "input": {
+    "selector": "configs/data_manifest.json",
+    "split": {
+      "config": "configs/t05_split.json",
+      "required_lifecycle_state": "T05_SPLIT_ACCEPTED"
+    },
+    "preprocessing": {
+      "config": "configs/t04_preprocessing.json",
+      "required_lifecycle_state": "T04_ACCEPTED"
+    },
+    "governing_adrs": [
+      "docs/adr/ADR-CF-implementation.md",
+      "docs/adr/ADR-CF-bridge.md"
+    ],
+    "governing_decisions": ["D10", "D15", "D22", "D23 (superseded by D30 2026-08-18)", "D30", "D31 (locked -- one-shot CF compute policy: T11 scope, 500K seed-robustness, Stage-4 CF exception)"]
+  },
+  "decision_record": {
+    "question": "Which Python Causal Forest implementation, exact config, and D30 scale plan satisfy ADR-CF-implementation's selection criteria, for T10's local preflight + Kaggle SMOKE/RESOURCE verification (no held-out, no validation, no real-data SMOKE executed yet)?",
+    "candidates_compared": [
+      "econml.grf.CausalForest (py-why/Microsoft, actively maintained, v0.17.0)",
+      "econml.dml.CausalForestDML (same package, adds a DML nuisance-residualization pre-stage)",
+      "causalml.inference.tree.CausalRandomForestRegressor (Uber, active, honesty lineage unverified against Wager-Athey/GRF)",
+      "skgrf.GRFForestCausalRegressor (crflynn, wraps the literal grf C++ core, but low-activity: 34 stars, 79 commits, vendored grf core lagging current CRAN release)"
+    ],
+    "selected_candidate": "econml.grf.CausalForest",
+    "selection_rationale": "Single-stage: fits directly on (X, T, y) by solving the local moment equation E[(Y - <theta(x),T> - beta(x))(T;1) | X=x]=0 -- theta(x) (treatment effect) and beta(x) (local intercept) are estimated jointly and locally via forest weights. No upfront nuisance-model fit, no cross-fitting stage -- verified directly from the installed source docstring (econml 0.17.0), not assumed from external documentation. This matches the project's existing pattern (T=design-assigned ITT; no covariate-varying propensity model fit anywhere in T07-T09) and avoids introducing a second nuisance-governance mechanism that CausalForestDML's W/nuisance stage would require. Best-maintained option (4.8k stars, active 2026 commits) versus skgrf's low-activity/version-lag risk and causalml's unverified forest-honesty lineage.",
+    "not_selected_reason": {
+      "econml.dml.CausalForestDML": "Adds a DML nuisance-residualization pre-stage (separate model_y/model_t fits) this project has no documented need for -- T is design-assigned, not a confounded observational treatment. Would introduce a second, larger nuisance-governance surface alongside X-Learner's OOF mechanism without justification. Retained as documented fallback only if econml.grf.CausalForest fails a later gate.",
+      "causalml": "Forest-based CausalRandomForestRegressor's honesty/sample-splitting semantics are not confirmed equivalent to Wager-Athey GRF from public documentation; the package's own UpliftRandomForestClassifier (a different class in the same package) uses KL-divergence/ED/chi-square splitting and is explicitly not honest/GRF-style -- same-package name-similarity risk the ADR explicitly warns against.",
+      "skgrf": "Small (34 stars, 79 commits), indeterminate recency, vendored grf C++ core reported behind current upstream (2.1.0 vs CRAN 2.6.1) -- highest integration/maintenance risk despite highest literal Wager-Athey fidelity."
+    },
+    "criterion_choice": "mse (package default). Verified from the installed econml 0.17.0 source docstring: 'mse' is the standard local-moment-estimation split rule (the reference GRF gradient-tree objective); 'het' is a distinct, non-default heterogeneity-score approximation. Frozen as the untouched default per CODE PLAN direction -- not selected by a fidelity ranking claim beyond what the source itself documents, and not tuned.",
+    "inference_false_rationale": "This project's frozen uncertainty mechanism is the 500-draw paired arm-stratified validation bootstrap (AGENTS.md frozen foundation; docs/06), applied post hoc to already-computed scores -- estimator-agnostic, and never consumes any estimator's internal per-row analytic/BLB interval. inference=True's Bootstrap-of-Little-Bags machinery has no downstream consumer in this project's established pipeline; disabling it is the smaller, justified final configuration rather than leaving a default-True flag enabled with no user.",
+    "n_jobs_determinism_finding": "Empirically verified during T10 IMPLEMENT (not assumed): with an identical random_state, n_jobs=2 and n_jobs=-1 each produced different predict() output than n_jobs=1 on the same data. n_jobs=1 is required for bit-identical reproducibility and is frozen despite its runtime cost; this is a correctness requirement, not a performance preference.",
+    "n_estimators_constraint_finding": "econml.grf.CausalForest.fit() raises ValueError unless n_estimators is exactly divisible by subforest_size (default 4) -- discovered via direct source-level testing, not documented prominently. n_estimators=100 (package default) satisfies this (100/4=25) and is frozen unchanged across SMOKE/RESOURCE/FULL per CODE PLAN direction (no borrowed R-grf tree count, no per-stage tuning).",
+    "serialization_finding": "Verified via direct pickle round-trip on a synthetic fixture: predictions after pickle.loads(pickle.dumps(model)) match the original exactly (bit-identical), confirming pickle as the serialization/reload mechanism for T10/T11 artifacts."
+  },
+  "frozen_config": {
+    "module": "src.causal_forest_baseline",
+    "config_hash_function": "src.causal_forest_baseline.config_hash",
+    "econml_version": "0.17.0",
+    "n_estimators": 100,
+    "criterion": "mse",
+    "honest": true,
+    "inference": false,
+    "min_samples_leaf": 5,
+    "max_samples": 0.45,
+    "min_balancedness_tol": 0.45,
+    "subforest_size": 4,
+    "max_depth": null,
+    "n_jobs": 1,
+    "random_state_by_stage": {"primary": 42, "robustness": [123, 2026]},
+    "same_n_estimators_across_all_stages": true,
+    "min_balancedness_tol_semantics_note": "Bounds split-size imbalance between a split's two children -- NOT a treatment/control arm-balance mechanism. Arm support is verified separately via honest_leaf_arm_support()."
+  },
+  "honesty_support_algorithm": {
+    "module": "src.causal_forest_baseline",
+    "function": "honest_leaf_arm_support",
+    "role": "DIAGNOSTIC ONLY, not a pass/fail gate (corrected -- see support_gate_correction below). Reports per-(tree,leaf) treated/control counts.",
+    "corrected_index_mapping": "tree.get_train_test_split_inds() returns indices LOCAL to forest.get_subsample_inds()[i], not global row indices -- verified empirically (max local index < len(subsample)). Global indices are subsample[split_local] / subsample[est_local]. Leaf support is computed from est_global only via tree.apply(X[est_global]), never split_global.",
+    "diagnostic_evidence": "full empirical distribution (min / 1st percentile / median) of min(n_treated, n_control) across all (tree, leaf) pairs, reported but never gating"
+  },
+  "support_gate_correction": {
+    "date": "post-SMOKE-attempt review",
+    "original_gate_removed": "100% of (tree, leaf) pairs reachable at predict() time must have n_treated>=1 AND n_control>=1 -- REMOVED. Verified over-constrained by direct inspection of econml/grf/_base_grf.py: identification is a forest-AGGREGATE property (predict_alpha_and_jac() averages each tree's local moment contribution across all trees; theta(x) = pinv(aggregate_jac(x)) @ aggregate_alpha(x)), not a per-tree-per-leaf requirement. econml itself implements no such per-leaf constraint by default.",
+    "finding_that_triggered_review": "First real-data local SMOKE attempt (200,000 train-only rows, seed 42, frozen config) found 32.7% of 615,156 reachable (tree,leaf) pairs degenerate (missing one arm, almost entirely zero-control) -- all 100/100 trees affected, median n_control per leaf = 1. Mathematically expected under ~85/15 treatment imbalance with an absolute min_samples_leaf=5 floor and unconstrained max_depth: P(all-treated leaf of size L) ~= 0.85^L (~44% at L=5), independent of N. This finding is retained as diagnostic evidence, not relabeled as estimator failure.",
+    "new_gate": {
+      "module": "src.causal_forest_baseline",
+      "function": "aggregate_jacobian_support",
+      "mechanism": "econml.grf.CausalForest.predict_alpha_and_jac(X) returns the aggregate alpha(x)/jac(x) econml itself uses to compute theta(x). Hard gate per query: alpha(x) finite, jac(x) finite, jac(x) has numpy.linalg.matrix_rank(jac(x)) == full parameter dimension (2: theta(T) + intercept beta) using matrix_rank's own default tolerance -- no invented condition-number cutoff -- and the resulting tau(x) prediction is finite.",
+      "diagnostic_only_evidence": "condition-number distribution (min/p50/p95/p99/max) of jac(x) across all queries, reported but never gating"
+    },
+    "unchanged_frozen_parameters": ["min_samples_leaf", "min_var_fraction_leaf", "min_var_leaf_on_val", "estimator/class (econml.grf.CausalForest)", "n_estimators", "criterion", "honest", "inference", "max_samples", "min_balancedness_tol", "subforest_size", "max_depth", "n_jobs", "random_state policy"],
+    "local_verification": "tests/test_causal_forest_baseline.py: test_aggregate_jacobian_support_passes_on_balanced_fixture, test_aggregate_jacobian_support_passes_despite_per_leaf_degeneracy (reproduces the ~85/15-imbalance per-leaf degeneracy synthetically and confirms the aggregate gate still passes), test_aggregate_jacobian_support_no_invented_condition_number_cutoff -- all passed.",
+    "final_disposition_locked_D31": {
+      "hard_correctness": ["alpha(x) finite for every query", "jac(x) finite for every query", "tau(x) finite for every query", "tau(x) non-degenerate (not constant, std>0)", "data/leakage/alignment/config correctness (row identity, feature contract, held-out isolation, config-hash match)"],
+      "diagnostic_only_never_gating": ["aggregate Jacobian numerical rank", "aggregate Jacobian condition number", "per-leaf treatment/control support (honest_leaf_arm_support)"],
+      "real_data_finding_at_2M_RESOURCE_scale": "t10_resource_20260819T093301Z_574711 (2,000,000 train-only rows, seed 42): alpha_all_finite=True, jac_all_finite=True, tau_all_finite=True (hard gate satisfied); jac_full_rank_fraction=0.999997 (6 of 2,000,000 queries rank-deficient, one exactly singular, max condition number=inf) -- correctly diagnostic-only under this disposition, not a failure. Confirmed via direct econml/grf/_base_grf.py source inspection: predict_alpha_and_jac()->pinv(jac) has zero internal rank/singularity handling of its own; EconML predicts through singular Jacobians by design via Moore-Penrose pinv.",
+      "run_disposition": "t10_resource_20260819T093301Z_574711 is retained UNCHANGED as T10 RESOURCE correctness/resource evidence only. NOT rerun. NOT reused as the seed-42 leg of the D31 500,000-row seed-robustness table (no serialized model or common-validation prediction artifact was produced before the run's since-superseded old gate halted it, so it is not comparable to fresh seed-123/2026 validation-scored runs at the D31-mandated 500,000-row scale)."
+    }
+  },
+  "synthetic_gate": {
+    "module": "tests/test_causal_forest_baseline.py",
+    "n_rows": 4000,
+    "x_distribution": "iid N(0, I_12), matching FEATURE_COLUMNS f0-f11",
+    "treatment_distribution": "Bernoulli(0.5), balanced (arm-imbalance-specific behavior is a real-data SMOKE/RESOURCE concern, not duplicated here)",
+    "noise": "N(0, 1.0)",
+    "fixtures": {
+      "positive": {"true_effect": 2.0, "pass": "abs(mean(tau_hat) - 2.0) <= 0.20 AND P(tau_hat>0) >= 0.95"},
+      "negative": {"true_effect": -2.0, "pass": "abs(mean(tau_hat) - (-2.0)) <= 0.20 AND P(tau_hat<0) >= 0.95"},
+      "zero": {"true_effect": 0.0, "pass": "abs(mean(tau_hat)) <= 0.10"},
+      "heterogeneous": {"true_effect": "2.0 * 1[f0>0]", "pass": "mean(tau_hat|f0>0) - mean(tau_hat|f0<=0) >= 1.0 AND spearman(tau_hat, 1[f0>0]) >= 0.5"}
+    },
+    "status": "all 4 fixtures passed (tests/test_causal_forest_baseline.py, 19/19 passed post-support-gate-correction)"
+  },
+  "scale_gating": {
+    "policy": "D30",
+    "stages": "SMOKE -> RESOURCE (exactly 1 gate) -> FULL",
+    "smoke_size": 50000,
+    "smoke_size_revision_note": "Revised from 200,000 to 50,000 (post-support-gate-correction patch). The prior local 200,000-row diagnostic run (t10_smoke_20260819T074012Z_483118, incomplete/failed under the old per-leaf gate) is retained as evidence but is NOT authoritative T10 SMOKE evidence -- it predates both the corrected gate and the corrected scale contract.",
+    "resource_gate_count": 1,
+    "resource_gate_size": 2000000,
+    "full_size": 9785714,
+    "no_second_gate_after_observing_results": true,
+    "failure_disposition": "STOP for review -- not an automatic second gate, not a silent retry",
+    "promotion_criteria": "correctness/support(aggregate-jacobian)/determinism/reload checks pass; resource evidence (wall time, peak RSS) recorded with no OOM/termination. No promotion criterion is a performance/effect metric -- training rows only, no ranking to select on.",
+    "smoke_status": "SMOKE accepted: run_id t10_smoke_20260819T091713Z_996970, status COMPLETED_T10_SMOKE_VERIFIED, all hard gates passed.",
+    "resource_status": "RESOURCE executed once: run_id t10_resource_20260819T093301Z_574711. Fit and predict on the complete 2,000,000-row cohort succeeded; hard correctness (alpha/jac/tau finite) held. Retained as correctness/resource evidence -- see decision_record.final_disposition_locked_D31. NO rerun performed or authorized. The RESOURCE stage is closed for T10's purposes."
+  },
+  "execution_environment": {
+    "smoke_resource_benchmark_authoritative_environment": "LOCAL (owner directive, superseding the earlier Kaggle-authoritative directive and the stale wording still present in GitHub Issue #11, which this repository has no tool access to edit directly -- flagged for a minimal manual Issue amendment, not blocking execution).",
+    "local_environment_scope": "authoritative for T10 SMOKE and RESOURCE execution as of this config version -- src/causal_forest_baseline.py, tests/test_causal_forest_baseline.py, and both real-data governed runs (t10_smoke_20260819T091713Z_996970 and the RESOURCE run this version authorizes).",
+    "audit_environment_json_must_record": "actual local machine hardware/package specs at SMOKE/RESOURCE execution time (already done for the accepted SMOKE run)."
+  },
+  "seed_robustness_plan_D31": {
+    "status": "PLANNED, NOT YET EXECUTED as of this config version",
+    "population": "500,000 TRAIN rows, deterministic joint-(T,Y)-stratified, sampling seed 42, IDENTICAL cohort for all three model seeds",
+    "model_seeds": [42, 123, 2026],
+    "config": "identical frozen config across all three (see frozen_config above) -- only random_state differs",
+    "scoring": "complete frozen VALIDATION cohort (2,096,938 rows), identical for all three seeds",
+    "rule": "report all three seeds; never select a favorable seed; no held-out access",
+    "rationale_for_500K_not_2M": "50K SMOKE has only 15 control conversions (correctness-oriented, not rare-outcome-robust); 500,000 rows provides materially stronger rare-outcome support for a seed-sensitivity comparison while remaining computationally bounded and clearly distinct from both SMOKE (correctness) and the one authorized FULL-scale fit (T11).",
+    "does_not_replace": "T11's single authoritative FULL-scale (9,785,714-row) fit -- this plan estimates algorithmic seed sensitivity only."
+  },
+  "t11_full_and_stage4_policy_D31": {
+    "status": "LOCKED (D31), NOT YET IMPLEMENTED -- pointer only; the authoritative T11 config/contract is created at T11 CODE PLAN",
+    "t11_full_scope": "Exactly ONE FULL-scale Causal Forest fit through T18: complete frozen T05 TRAIN (9,785,714 rows), primary seed 42, no validation fitting, held-out sealed.",
+    "stage4_exception": "Causal Forest is exempted from docs/06 Stage 4's combined-train+validation refit pattern (amended, D31). The exact serialized T11 FULL train-only seed-42 model becomes the T16-frozen CF artifact -- no additional refit. This exception applies ONLY to Causal Forest; Response/T-Learner/X-Learner Stage-4 rules are unchanged.",
+    "t17_scope": "T17 scores that exact frozen model on held-out only. No CF training of any kind occurs at or after T17.",
+    "only_governed_reason_to_repeat_training": "A genuine, demonstrated software or methodology defect discovered before held-out access (matching this project's existing Class-A correction precedent). Unfavorable-but-valid model performance is explicitly NOT a defect and never triggers a refit."
+  },
+  "bridge_decision": {
+    "status": "DEFERRED (D22, ADR-CF-bridge.md, unchanged)",
+    "activation_condition_met": false,
+    "note": "econml.grf.CausalForest is a qualifying Python implementation satisfying the reviewed ADR criteria; no required correctness/honesty/support/inference capability has been found unavailable from it. No cross-language bridge is proposed."
+  },
+  "scope_guards": {
+    "fit_on_validation_or_held_out": false,
+    "access_held_out_labels_or_features": false,
+    "run_real_data_smoke_this_turn": false,
+    "run_resource_gate_this_turn": false,
+    "rerun_2M_resource": false,
+    "run_seed_robustness_this_turn": false,
+    "run_t11_full_this_turn": false,
+    "start_t11_implementation": false,
+    "commit_or_push": false
+  },
+  "lifecycle_state": "T10_ACCEPTED",
+  "lifecycle_state_evidence": {
+    "note": "SMOKE and RESOURCE both closed for T10's purposes under D31's final disposition (decision_record.final_disposition_locked_D31). Downstream seed-robustness (500K) and T11 FULL remain separate, not-yet-executed work governed by seed_robustness_plan_D31 / t11_full_and_stage4_policy_D31 above.",
+    "local_preflight_tests": "tests/test_causal_forest_baseline.py, 19/19 passed (post-support-gate-correction)",
+    "accepted_smoke_run_id": "t10_smoke_20260819T091713Z_996970",
+    "superseded_incomplete_local_run": "t10_smoke_20260819T074012Z_483118 (200,000 rows, old per-leaf gate, incomplete/failed -- retained as diagnostic evidence, not authoritative)",
+    "retained_resource_run_id": "t10_resource_20260819T093301Z_574711 (2,000,000 rows, retained correctness/resource evidence, not rerun, not a seed-robustness stand-in)"
+  }
+}

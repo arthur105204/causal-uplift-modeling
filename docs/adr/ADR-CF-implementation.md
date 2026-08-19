@@ -90,7 +90,14 @@ test release:
    validation-only metrics and a promotion rule approved before the comparison.
    No held-out test value may influence promotion.
 7. **Seed gate:** complete and report the configured `42`, `123`, and `2026`
-   development retraining without choosing the most favorable seed.
+   development retraining without choosing the most favorable seed. Per D31,
+   under a declared one-shot resource constraint this development retraining
+   occurs at a single predeclared bounded development scale common to all
+   three seeds -- `500,000` rows, deterministic joint-`(T,Y)`-stratified,
+   sampled with seed `42`, scored on the complete frozen validation cohort --
+   rather than the full development population; the bounded scale and
+   rationale are recorded in the task's config before execution, not selected
+   after observing results.
 8. **Pre-test-freeze gate:** serialize and reload the chosen model, freeze exact
    artifacts/configuration/seeds/claims, attach every gate result, and include
    the estimator in `pretest_freeze.json` before any test access.

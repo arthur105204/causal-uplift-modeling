@@ -174,9 +174,13 @@ After all selection and robustness decisions are final:
 4. If DR was promoted, rebuild its five-fold cross-fitted nuisance predictions on
    combined training plus validation with all choices fixed, then fit its final
    CATE stage. No test row enters a nuisance or final-stage fit.
-5. In Sprint 2, refit Causal Forest only if every implementation and validation
-   promotion gate has passed; use the selected honesty/sample-splitting protocol
-   and no test row.
+5. Causal Forest is exempted from the combined-training-plus-validation refit
+   pattern in items 2-4 (D31, one-shot compute constraint). Provided every
+   implementation and validation promotion gate has passed, the single frozen
+   train-only development fit (primary seed `42`, complete frozen training
+   partition) is retained as the candidate model; no additional refit is
+   performed at this stage. No test row enters any Causal Forest fit at any
+   stage.
 6. Serialize the final models and verify reload/prediction equivalence on a
    development-only fixture.
 
