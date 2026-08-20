@@ -524,7 +524,7 @@ def _verify_resume_identity(
     request: StageRequest,
     config_hash: str,
     train_identity: dict[str, Any],
-    fit_train_identity= dict[str, Any],
+    fit_train_identity: dict[str, Any],
     validation_identity: dict[str, Any],
 ) -> None:
     mismatches = []
