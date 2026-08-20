@@ -683,6 +683,83 @@ def materialize_pandas(
     return table.to_pandas(split_blocks=True, self_destruct=False)
 
 
+def materialize_pandas_by_source_row_id(
+    dataset: pads.Dataset,
+    *,
+    columns: Iterable[str],
+    source_row_ids,
+):
+    """Materialize ONLY the rows at the given _source_row_id positions.
+
+    _source_row_id is provably identical to the row's positional ordinal in
+    the processed parquet file: conversion appends
+    ``np.arange(offset, offset + batch.num_rows)`` per batch
+    (``_augment_with_source_ids``), and ``validate_processed_parquet``'s
+    ordinal-continuity check enforces this as a frozen contract property (see
+    ``source_row_id.complete_unique_ordered`` in its result). This function
+    therefore uses ``source_row_id`` values directly as
+    ``pyarrow.dataset.Dataset.take()`` row positions -- a compact int64
+    positional read -- rather than a value-based ``isin`` filter scan and
+    rather than any Python ``set``/``list`` of the requested ids. Held-out (or
+    any other unrequested) rows are never assembled into a resident,
+    Python-visible structure by this call; unrequested row groups a
+    fragment-level take can skip are skipped, and within a touched fragment
+    only the requested rows are decoded into the returned table.
+
+    Fails closed on duplicate or missing/out-of-range ids -- never silently
+    deduplicates or drops rows. Returns rows in ascending source_row_id order
+    (this project's established frozen row order).
+    """
+
+    selected = tuple(columns)
+    undeclared = sorted(set(selected).difference(PROCESSED_COLUMNS))
+    if undeclared:
+        raise DataContractError(f"Requested undeclared columns: {undeclared}")
+    if SOURCE_ROW_ID not in selected:
+        raise DataContractError(
+            f"materialize_pandas_by_source_row_id requires {SOURCE_ROW_ID!r} in columns"
+        )
+
+    indices = np.asarray(source_row_ids, dtype=np.int64)
+    if indices.ndim != 1:
+        raise DataContractError("source_row_ids must be one-dimensional")
+    if indices.size == 0:
+        raise DataContractError("source_row_ids must be non-empty")
+
+    sorted_indices = np.sort(indices)
+    unique_indices = np.unique(sorted_indices)
+    if unique_indices.size != sorted_indices.size:
+        duplicate_count = int(sorted_indices.size - unique_indices.size)
+        raise DataContractError(
+            f"Duplicate source_row_id values in requested set: {duplicate_count} duplicate(s) -- "
+            "refusing to silently deduplicate"
+        )
+
+    indices_array = pa.array(sorted_indices, type=pa.int64())
+    try:
+        table = dataset.take(indices_array, columns=list(selected))
+    except (pa.lib.ArrowIndexError, IndexError) as exc:
+        raise DataContractError(
+            f"take() failed on requested source_row_ids -- likely a missing/out-of-range id: {exc}"
+        ) from exc
+
+    frame = table.to_pandas(split_blocks=True, self_destruct=False)
+
+    if len(frame) != sorted_indices.size:
+        raise DataContractError(
+            f"take() row-count mismatch: requested {sorted_indices.size} source_row_ids, got "
+            f"{len(frame)} rows -- refusing to silently drop or duplicate rows"
+        )
+    observed_ids = frame[SOURCE_ROW_ID].to_numpy()
+    if not np.array_equal(observed_ids, sorted_indices):
+        raise DataContractError(
+            "Returned row identity/order does not match the requested sorted source_row_ids -- "
+            "frozen row order violated"
+        )
+
+    return frame
+
+
 def assert_model_feature_contract(columns: Iterable[str]) -> None:
     """Fail unless model features are exactly f0 through f11 in order."""
 
@@ -798,6 +875,34 @@ def write_json_new(run_root: Path, relative_path: str, payload: Any) -> Path:
 
     text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     return write_text_new(run_root, relative_path, text)
+
+
+def write_bytes_new_atomic(run_root: Path, relative_path: str, payload: bytes) -> tuple[Path, str]:
+    """Write bytes crash-safely for large artifacts and return (path, sha256).
+
+    ``write_bytes_new`` opens the destination path directly under exclusive
+    create, so a crash mid-write leaves a truncated file sitting at the real
+    artifact path. This variant instead writes to a ``.tmp`` sibling in the
+    same directory, ``flush()``+``fsync()``s it, and only then performs a
+    single atomic ``os.replace`` onto the destination -- the destination path
+    never observably exists in a partially-written state. Intended for large,
+    expensive-to-regenerate artifacts (serialized models, persisted
+    predictions) where a checkpoint must be able to trust that a hash taken
+    after this call reflects a complete file.
+    """
+
+    destination = _new_run_artifact_path(run_root, relative_path)
+    if destination.exists():
+        raise FileExistsError(destination)
+    temporary_path = destination.with_name(destination.name + ".tmp")
+    if temporary_path.exists():
+        raise DataContractError(f"Stale temporary artifact present: {temporary_path}")
+    with temporary_path.open("xb") as handle:
+        handle.write(payload)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary_path, destination)
+    return destination, sha256_file(destination)
 
 
 def finalize_artifact_manifest(

@@ -262,8 +262,44 @@ def test_aggregate_jacobian_support_no_invented_condition_number_cutoff() -> Non
     result = aggregate_jacobian_support(model, X)
     # A large max condition number alone must not flip `passed` to False.
     if result.condition_number_distribution["max"] > 100:
-        assert result.passed == (result.alpha_all_finite and result.jac_all_finite and result.tau_all_finite and result.all_full_rank)
+        assert result.passed == (
+            result.alpha_all_finite
+            and result.jac_all_finite
+            and result.tau_all_finite
+        )        
 
+def test_aggregate_jacobian_rank_deficiency_is_diagnostic_only(monkeypatch) -> None:
+    """Finite alpha/jac/tau must pass even when one aggregate Jacobian is singular."""
+
+    X, T, noise = _synthetic_frame(seed=43)
+    Y = 0.5 * X["f0"].to_numpy() + T * EFFECT_MAGNITUDE + noise
+    model = _fit(X, T, Y)
+
+    original_predict_alpha_and_jac = model.model.predict_alpha_and_jac
+
+    def _singular_first_jacobian(X_arr):
+        alpha, jac = original_predict_alpha_and_jac(X_arr)
+        jac = jac.copy()
+        jac[0] = 0.0
+        return alpha, jac
+
+    monkeypatch.setattr(
+        model.model,
+        "predict_alpha_and_jac",
+        _singular_first_jacobian,
+    )
+
+    result = aggregate_jacobian_support(model, X)
+
+    assert result.alpha_all_finite
+    assert result.jac_all_finite
+    assert result.tau_all_finite
+
+    assert not result.all_full_rank
+    assert result.jac_full_rank_fraction < 1.0
+
+    # Rank deficiency is diagnostic only.
+    assert result.passed
 
 # --- Determinism / serialization-reload --------------------------------------------
 

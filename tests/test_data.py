@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.dataset as pads
 import pytest
 
 from src.data import (
@@ -12,11 +14,14 @@ from src.data import (
     PROCESSED_COLUMNS,
     RAW_SCHEMA,
     ROW_GROUP_SIZE,
+    SOURCE_ROW_ID,
     DataContractError,
     SemanticHasher,
     convert_csv_to_parquet,
     finalize_artifact_manifest,
     load_selector,
+    materialize_pandas,
+    materialize_pandas_by_source_row_id,
     open_processed_dataset,
     promote_processed_with_rollback,
     sha256_file,
@@ -24,6 +29,7 @@ from src.data import (
     validate_source_identity,
     verify_expected_file_checksum,
     write_bytes_new,
+    write_bytes_new_atomic,
     write_json_new,
     write_text_new,
 )
@@ -309,6 +315,130 @@ def test_interrupted_promotion_state_fails_closed_without_discarding_backup(
     assert not canonical.exists()
     assert candidate.read_bytes() == b"validated candidate"
     assert backup.read_bytes() == b"previous canonical requiring explicit validation"
+
+
+def _converted_dataset(tmp_path: Path, rows: int) -> tuple[pads.Dataset, pd.DataFrame]:
+    frame = _frame(rows=rows)
+    raw = tmp_path / "partition_source.csv"
+    raw.write_text(frame.to_csv(index=False), encoding="utf-8")
+    processed = tmp_path / "partition_processed.parquet"
+    convert_csv_to_parquet(raw, processed, row_limit=None)
+    dataset = pads.dataset(processed, format="parquet")
+    return dataset, frame
+
+
+def test_materialize_by_source_row_id_matches_legacy_isin_filter_exactly(
+    tmp_path: Path,
+) -> None:
+    dataset, frame = _converted_dataset(tmp_path, rows=200)
+    columns = [SOURCE_ROW_ID, *FEATURE_COLUMNS, "treatment", "conversion"]
+
+    rng = np.random.default_rng(42)
+    requested_ids = rng.choice(len(frame), size=37, replace=False)
+
+    legacy = materialize_pandas(dataset, columns=columns, row_limit=None)
+    legacy_subset = (
+        legacy[legacy[SOURCE_ROW_ID].isin(requested_ids)]
+        .sort_values(SOURCE_ROW_ID)
+        .reset_index(drop=True)
+    )
+
+    partitioned = materialize_pandas_by_source_row_id(
+        dataset, columns=columns, source_row_ids=requested_ids
+    ).reset_index(drop=True)
+
+    assert list(partitioned.columns) == columns
+    assert len(partitioned) == 37
+    assert partitioned[SOURCE_ROW_ID].tolist() == sorted(requested_ids.tolist())
+    pd.testing.assert_frame_equal(partitioned, legacy_subset, check_like=False)
+    assert (partitioned.dtypes == legacy_subset.dtypes).all()
+
+
+def test_materialize_by_source_row_id_rejects_duplicate_ids(tmp_path: Path) -> None:
+    dataset, _ = _converted_dataset(tmp_path, rows=20)
+    columns = [SOURCE_ROW_ID, *FEATURE_COLUMNS, "treatment", "conversion"]
+    with pytest.raises(DataContractError, match="Duplicate"):
+        materialize_pandas_by_source_row_id(
+            dataset, columns=columns, source_row_ids=[1, 2, 2, 3]
+        )
+
+
+def test_materialize_by_source_row_id_rejects_missing_source_row_id_in_columns(
+    tmp_path: Path,
+) -> None:
+    dataset, _ = _converted_dataset(tmp_path, rows=20)
+    columns = [*FEATURE_COLUMNS, "treatment", "conversion"]
+    with pytest.raises(DataContractError, match=SOURCE_ROW_ID):
+        materialize_pandas_by_source_row_id(
+            dataset, columns=columns, source_row_ids=[1, 2, 3]
+        )
+
+
+def test_materialize_by_source_row_id_rejects_undeclared_columns(tmp_path: Path) -> None:
+    dataset, _ = _converted_dataset(tmp_path, rows=20)
+    columns = [SOURCE_ROW_ID, "not_a_real_column"]
+    with pytest.raises(DataContractError, match="undeclared"):
+        materialize_pandas_by_source_row_id(
+            dataset, columns=columns, source_row_ids=[1, 2, 3]
+        )
+
+
+def test_materialize_by_source_row_id_rejects_out_of_range_ids(tmp_path: Path) -> None:
+    dataset, frame = _converted_dataset(tmp_path, rows=20)
+    columns = [SOURCE_ROW_ID, *FEATURE_COLUMNS, "treatment", "conversion"]
+    with pytest.raises(DataContractError, match="take"):
+        materialize_pandas_by_source_row_id(
+            dataset, columns=columns, source_row_ids=[0, 1, len(frame) + 1000]
+        )
+
+
+def test_materialize_by_source_row_id_rejects_empty_request(tmp_path: Path) -> None:
+    dataset, _ = _converted_dataset(tmp_path, rows=20)
+    columns = [SOURCE_ROW_ID, *FEATURE_COLUMNS, "treatment", "conversion"]
+    with pytest.raises(DataContractError, match="non-empty"):
+        materialize_pandas_by_source_row_id(
+            dataset, columns=columns, source_row_ids=[]
+        )
+
+
+def test_materialize_by_source_row_id_full_population_matches_legacy_full_scan(
+    tmp_path: Path,
+) -> None:
+    dataset, frame = _converted_dataset(tmp_path, rows=50)
+    columns = list(PROCESSED_COLUMNS)
+
+    legacy = materialize_pandas(dataset, columns=columns, row_limit=None).reset_index(
+        drop=True
+    )
+    partitioned = materialize_pandas_by_source_row_id(
+        dataset, columns=columns, source_row_ids=np.arange(len(frame))
+    ).reset_index(drop=True)
+
+    pd.testing.assert_frame_equal(partitioned, legacy, check_like=False)
+
+
+def test_write_bytes_new_atomic_leaves_no_partial_or_temp_file(tmp_path: Path) -> None:
+    run_root = tmp_path / "run"
+    payload = b"synthetic large artifact bytes"
+
+    destination, digest = write_bytes_new_atomic(run_root, "models/model.pkl", payload)
+
+    assert destination.read_bytes() == payload
+    assert digest == sha256_file(destination)
+    assert not destination.with_name(destination.name + ".tmp").exists()
+
+
+def test_write_bytes_new_atomic_refuses_overwrite(tmp_path: Path) -> None:
+    run_root = tmp_path / "run"
+    write_bytes_new_atomic(run_root, "models/model.pkl", b"first")
+    with pytest.raises(FileExistsError):
+        write_bytes_new_atomic(run_root, "models/model.pkl", b"second")
+    assert (run_root / "models" / "model.pkl").read_bytes() == b"first"
+
+
+def test_write_bytes_new_atomic_rejects_completed_run(completed_run: Path) -> None:
+    with pytest.raises(DataContractError, match="immutable"):
+        write_bytes_new_atomic(completed_run, "models/late.pkl", b"payload")
 
 
 def test_semantic_digest_is_independent_of_batch_boundaries() -> None:
