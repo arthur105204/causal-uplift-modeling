@@ -127,3 +127,13 @@ D32 (`decision_register.csv`) is the authoritative feature-semantics decision:
 are categorical numeric tokens. It governs model-input representation across
 `docs/02`, `docs/03`, `docs/05`, `docs/06`, and the base-learner/Causal-Forest
 ADRs without changing the canonical `X = f0...f11` definition itself.
+
+D33 (`decision_register.csv`) is the authoritative diagnostic-scope
+simplification: the 2,000-draw randomization-calibration protocol and the
+`X→T` predictability gate are optional/P1 internal diagnostics, not a
+precondition for T16/pre-test freeze; descriptive balance (ED-03/ED-03b) and
+basic arm support (ED-05) remain mandatory; robustness seeds `123`/`2026` and
+T14 decile/segment tables are non-blocking supporting evidence. It governs
+`docs/03`, `docs/05`, `docs/06`, `docs/00_project_overview.md`, `AGENTS.md`,
+and `docs/adr/ADR-experiment-artifacts.md` without changing any causal
+formula, estimand, split, or held-out protocol.

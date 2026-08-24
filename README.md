@@ -17,12 +17,28 @@ tasks in that plan are complete.
 
 ## Research objective
 
-The project specifies large-scale causal uplift modeling on
-CRITEO-UPLIFTv2.1. Its primary objective is to rank eligible observations by the
-conditional effect of treatment assignment on `conversion`, rather than by
-response probability alone. `conversion` is the primary outcome. When present
+This project is a controlled empirical comparison of selected causal-uplift
+implementations under one common large-scale randomized advertising benchmark
+(CRITEO-UPLIFTv2.1) and one fixed experimental protocol (D33). It is **not**
+an attempt to identify a universally best CATE/uplift algorithm.
+
+A response model asks *who is likely to convert*; the uplift models compared
+here instead ask *where treatment changes conversion* — ranking eligible
+observations by the conditional effect of treatment assignment on
+`conversion`, rather than by response probability alone. The compared
+portfolio is the theoretical random reference, a Response LightGBM comparator,
+T-Learner, X-Learner, and Causal Forest, on a common validation cohort and one
+frozen held-out evaluation. `conversion` is the primary outcome; when present
 and schema-valid, `visit` is a secondary outcome that cannot change primary
 selection or claims.
+
+Conclusions are explicitly dataset-specific, implementation-specific,
+protocol-specific, and metric-specific: a valid conclusion has the form "among
+the evaluated implementations, estimator A achieved stronger held-out
+uplift-ranking / treatment-allocation performance under the frozen
+CRITEO-UPLIFTv2.1 protocol" — not a claim that one estimator is universally
+better, that observed performance is intrinsic to a meta-learner family, or
+that observed superiority explains *why* an estimator is theoretically better.
 
 ## Causal contract summary
 

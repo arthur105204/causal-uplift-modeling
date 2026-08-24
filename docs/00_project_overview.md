@@ -61,10 +61,12 @@ Every requirement uses exactly one class from document 03:
 - `ASSUMPTION_SUPPORT_OR_LIMITATION` for source/design support and irreducible
   limitations.
 
-Sprint 1 freezes the design-calibrated diagnostic algorithms and action
-taxonomy. Numerical calibration, checksums, and executed evidence are
-`OPEN_FOR_SPRINT2` and must be completed before the pre-test executable freeze.
-They are not current empirical results.
+Sprint 1 freezes the mandatory descriptive-diagnostic algorithms and action
+taxonomy. Checksums and executed evidence are `OPEN_FOR_SPRINT2` and must be
+completed before the pre-test executable freeze; they are not current
+empirical results. Per D33, the full design-null randomization-calibration
+protocol and the `X→T` predictability gate are optional/P1 internal
+diagnostics, not a pre-test-freeze precondition — see `docs/03`.
 
 ## Estimator portfolio
 

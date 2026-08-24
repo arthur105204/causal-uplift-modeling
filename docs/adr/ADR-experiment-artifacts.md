@@ -57,18 +57,27 @@ tables/split_summary.csv
 tables/ate_summary.csv
 tables/response_diagnostics.csv
 tables/validation_selection.csv
-tables/random_deciles.csv
-tables/response_deciles.csv
-tables/tlearner_deciles.csv
-tables/xlearner_deciles.csv
 tables/uplift_at_k.csv
 tables/model_summary.csv
 ```
 
-Conditional promoted-method tables use exactly
-`tables/drlearner_deciles.csv`. A Sprint 2 Causal Forest that passes all
-ADR gates uses `tables/causal_forest_deciles.csv`. A later promoted S-Learner
-would use `tables/slearner_deciles.csv`; Sprint 1 does not require it.
+### Optional / P1 tables (T14 decile/segment analysis)
+
+Per D33, decile/segment tables are optional (T14/P1) reporting for every
+estimator — useful, never a precondition for that estimator's acceptance or
+promotion:
+
+```text
+tables/random_deciles.csv
+tables/response_deciles.csv
+tables/tlearner_deciles.csv
+tables/xlearner_deciles.csv
+```
+
+If produced, a conditional promoted method uses exactly
+`tables/drlearner_deciles.csv`; a Sprint 2 Causal Forest that passes all ADR
+gates uses `tables/causal_forest_deciles.csv`; a later promoted S-Learner
+would use `tables/slearner_deciles.csv`. None of these are required tables.
 
 `split_summary.csv` may contain train/validation counts before freeze, but test
 label counts/rates remain sealed or redacted until release. Every metric table
@@ -78,20 +87,17 @@ value, and unit directly or through an unambiguous normalized schema.
 ### Required figures
 
 ```text
-figures/response_uplift_deciles.png
-figures/tlearner_uplift_deciles.png
-figures/xlearner_uplift_deciles.png
 figures/cumulative_uplift_rate.png
 figures/cumulative_uplift_gain.png
 figures/qini_curve.png
 ```
 
-If DR-Learner is promoted, add
-`figures/drlearner_uplift_deciles.png`. Figures are presentations of
-machine-readable tables, not primary evidence.
-
-If Sprint 2 Causal Forest passes every ADR gate, add
-`figures/causal_forest_uplift_deciles.png`.
+Optional / P1 (T14, D33): `figures/response_uplift_deciles.png`,
+`figures/tlearner_uplift_deciles.png`, `figures/xlearner_uplift_deciles.png`,
+and, if produced, `figures/drlearner_uplift_deciles.png` /
+`figures/causal_forest_uplift_deciles.png`. Figures are presentations of
+machine-readable tables, not primary evidence, and none of the decile figures
+are required for any estimator's acceptance or promotion.
 
 ### Required models and predictions
 

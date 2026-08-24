@@ -1,20 +1,33 @@
 # GitHub Issue reconciliation drafts (not yet applied)
 
 This file was produced by the documentation/planning reconciliation pass
-described in `docs/agent_tasks/docs_reconciliation.md`. **No GitHub API write
-credential was available in this session** (`$GITHUB_TOKEN` returned `Bad
-credentials`, and no `gh` CLI is installed), so MASTER #20 and Issues #4-#19
-could not be edited on GitHub directly. The content below is ready to paste
-into each Issue by whoever has write access (`gh issue edit <n> --body-file
--` or the GitHub UI). Delete this file once applied.
+described in `docs/agent_tasks/docs_reconciliation.md`, and amended by a
+second pass under `docs/DOCS_SIMPLIFICATION_TASK.md` (owner-approved D33
+simplification). **No GitHub API write credential was available in either
+session** (`$GITHUB_TOKEN` returned `Bad credentials`, and no `gh` CLI is
+installed), so MASTER #20 and Issues #4-#19 could not be edited on GitHub
+directly. The content below is ready to paste into each Issue by whoever has
+write access (`gh issue edit <n> --body-file -` or the GitHub UI). Delete this
+file once applied.
+
+**D33 second-pass note:** the first pass's draft below still preserved T03-C
+as a mandatory (if non-blocking-to-critical-path) P0 requirement, framed
+robustness seeds and decile artifacts as effectively required, and is
+therefore stale on exactly those points per the owner's D33 review. Do not
+apply the first-pass MASTER #20/Issue text as originally drafted — the
+sections below have been amended in place to reflect D33; amendments are
+marked `(D33)` inline. Everything else in the original first pass (Kaggle
+multi-session model, four-notebook mapping, D32 feature-semantics rule,
+frozen causal/split/metric/bootstrap rules) is unchanged and still current.
 
 Scope and method: only the parts flagged stale by
-`docs/agent_tasks/docs_reconciliation.md` are changed — the old
-per-notebook-series naming (`01_data_feasibility.ipynb` ...
-`07_final_story.ipynb`), the D23 scale-rung wording superseded by D30, and the
-missing D32 feature-semantics rule. GOAL/INPUT/PROCESS/OUTPUT/VERIFICATION/
-DEPENDENCIES/DEFINITION OF DONE content, checklists, and methodological
-requirements are left untouched.
+`docs/agent_tasks/docs_reconciliation.md` (pass 1) or by D33 (pass 2) are
+changed — the old per-notebook-series naming (`01_data_feasibility.ipynb` ...
+`07_final_story.ipynb`), the D23 scale-rung wording superseded by D30, the
+missing D32 feature-semantics rule, and now the T03-C/seed/decile-artifact
+over-scoping D33 corrects. GOAL/INPUT/PROCESS/OUTPUT/VERIFICATION/
+DEPENDENCIES/DEFINITION OF DONE content, checklists, and unaffected
+methodological requirements are left untouched.
 
 ---
 
@@ -116,8 +129,8 @@ architecture / data feasibility
 → #9 T08 → #10 T09 → #11 T10 → #12 T11 → #13 T12 → #16 T15 → #17 T16
 → #18 T17 → #19 T18
 
-off the blocking path, in parallel after #6 T05:
-#4 T03-C  (mandatory; must complete before #17 T16)
+off the blocking path, optional/P1 (D33), in parallel after #6 T05 if run at all:
+#4 T03-C  (optional/P1 internal diagnostic; NOT required before #17 T16 — D33)
 #15 T14   (P1; after #13 T12)
 #14 T13   (conditional; only if #13 T12 is surprising or unstable)
 ```
@@ -128,21 +141,33 @@ Nothing outside this path may block it.
 
 S01, T01, T03-A, T02, T05, T04, T06, T07, T08, T09, T10, T11, T12, T15, T16, T17, T18.
 
-## P0 — mandatory, non-blocking
+`T03` here means its HARD_GATE/mandatory-diagnostic scope: input identity,
+schema, X/T/Y roles, forbidden-column checks, D32 feature-type handling,
+missing/infinite-value checks, row identity, split disjointness/accounting,
+basic treatment/outcome support (a genuine `STOP` gate), and descriptive
+baseline balance (ED-03/ED-03b, D33) — required to compute and report, but
+explicitly non-blocking: not a P0 causal-validity or correctness gate, and an
+unusual SMD/TVD must not automatically stop or block anything downstream.
+T03-C is not part of this mandatory scope — see below.
 
-**T03-C** (2,000-draw randomization calibration). Mandatory and frozen. It is *not* a
-predecessor of T04 or of any modeling task, because `docs/06` Stage 0 item 3 states the
-calibration algorithm is frozen early while "generated development-data thresholds are locked
-later, before the pre-test executable freeze," and `docs/03` requires the generated percentiles
-to be finalized before the pre-test executable freeze. Run it in parallel once T05 exists.
-Deadline: before T16.
+## Optional / P1 (D33) — was "P0 — mandatory, non-blocking"
+
+**T03-C** (2,000-draw randomization calibration) and the `X→T` predictability
+diagnostic (ED-04) are **optional/P1 internal diagnostics** per the owner's
+D33 decision, not mandatory or frozen. Randomization evidence comes primarily
+from the documented publisher/experimental assignment mechanism; observed
+balance is a descriptive sanity check only. Run T03-C only if investigating a
+specific ED-03/ED-03b finding; it is not a predecessor of T04, any modeling
+task, or T16, and its absence never blocks the pre-test freeze.
 
 ## P1 / conditional / deferred
 
 | Item | Class | Rule |
 |---|---|---|
+| T03-C randomization calibration | Optional/P1 (D33) | Not a P0 gate; run only for investigation. Never a T16 precondition. |
 | T13 root-cause diagnostics | Conditional | Execute only when T12 produces a surprising or unstable result. Not an unconditional predecessor of T15. |
-| T14 decile/segment analysis | P1 | After T12; runs in parallel with downstream P0 work. Never blocks T15/T16/T17. |
+| T14 decile/segment analysis | P1 | After T12; runs in parallel with downstream P0 work. Never blocks T15/T16/T17 or any estimator's acceptance (D33). |
+| Robustness seeds 123/2026 | Supporting, non-blocking (D29, AMENDED_BY_D33) | Report where computationally reasonable; never a precondition for an estimator's shortlist entry unless its implementation specifically requires stochastic-stability verification. Primary seed 42 required and unaffected. The 500-draw bootstrap itself (D29) remains mandatory, unchanged. Causal Forest's seed policy remains D31, unaffected and not superseded. |
 | DR-Learner | Stretch / conditional | Development-only. Enters held-out evaluation only if every promotion gate passes before freeze. |
 | S-Learner | Deferred | Not implemented; never silently substituted for Response or T-Learner. |
 | Cross-language CF bridge | Conditional | Python-only unless documented evidence proves a required capability is missing (D22). |
@@ -209,13 +234,21 @@ These are not repeated in individual Issues. They always apply.
   top-K/incremental conversions are secondary (D25/D26). Response AUC/AP/log loss are
   diagnostic only and never select a causal winner (D27).
 - Uncertainty: exactly 500 paired treatment-arm-stratified bootstrap draws with fixed
-  predictions (D29). T17 is the first and only held-out evaluation, under the T16 freeze.
+  predictions (D29, mandatory and unchanged by D33). Robustness seeds 123/2026 (D29,
+  AMENDED_BY_D33) are supporting, non-blocking evidence — primary seed 42 required, favorable
+  seed never cherry-picked, D31's Causal Forest one-shot exception unaffected. T17 is the first
+  and only held-out evaluation, under the T16 freeze.
 - D30 scale-gating policy applies: `SMOKE → [RESOURCE GATE(S) if required] → FULL`, task-declared
   sizes frozen before execution (supersedes the prior fixed `D23` `50K → 500K → 2M → full`
   ladder; T01-T06 evidence produced under D23 is retained unchanged). Execute only the current
   stage; promote only after its predeclared correctness/resource evidence passes.
-- Balance diagnostics do not prove randomization. `f0`–`f11` are anonymized and carry no known
-  business meaning — do not invent one.
+- Balance diagnostics do not prove randomization; randomization evidence comes primarily from the
+  documented publisher/experimental assignment mechanism (D33). Descriptive ED-03/ED-03b balance
+  is required to compute/report but explicitly non-blocking — not a P0 causal-validity or
+  correctness gate; only ED-05 arm support is a genuine `STOP` gate. The 2,000-draw calibration
+  protocol and `X→T` predictability are optional/P1, never a T16 precondition. `f0`–`f11` are
+  anonymized and carry no
+  known business meaning — do not invent one.
 
 # Data feasibility standards
 
@@ -314,7 +347,7 @@ owner is not expected to reinvent generic engineering infrastructure.
 - [x] [S01 — Sprint-1 feasibility evidence](https://github.com/arthur105204/causal-uplift-modeling/issues/1)
 - [x] [T01 — Data engineering pipeline](https://github.com/arthur105204/causal-uplift-modeling/issues/2)
 - [x] [T02 — Exploratory data analysis](https://github.com/arthur105204/causal-uplift-modeling/issues/3)
-- [ ] [T03 — Data quality & causal integrity](https://github.com/arthur105204/causal-uplift-modeling/issues/4) — A: P0 blocking · C: P0 non-blocking
+- [ ] [T03 — Data quality & causal integrity](https://github.com/arthur105204/causal-uplift-modeling/issues/4) — A: P0 blocking · C: optional/P1 internal diagnostic (D33, was "P0 non-blocking")
 - [ ] [T05 — Frozen split](https://github.com/arthur105204/causal-uplift-modeling/issues/6)
 - [ ] [T04 — Preprocessing strategy](https://github.com/arthur105204/causal-uplift-modeling/issues/5)
 - [ ] [T06 — Uplift metrics](https://github.com/arthur105204/causal-uplift-modeling/issues/7)
@@ -354,15 +387,14 @@ neither did the D32 feature-semantics correction.
    check cannot support a full-data conclusion. Recording a *sampled* ED-03 distributional
    result as the audit evidence therefore needs owner approval and a `docs/03` amendment. The
    current Issue wording keeps these full-data but requires a single vectorized pass.
-2. **2,000-draw calibration count.** Frozen by `docs/03` (initial 2,000 draws from master seed
-   42) and `docs/06` (diagnostic null calibration row). Reducing the initial count would need
-   owner approval and a document amendment. It has **not** been reduced — only rescheduled off
-   the blocking path, which `docs/06` Stage 0 already permits.
-3. **Residual sequencing risk from that rescheduling.** `docs/03` audit ordering item 6 asks for
-   material diagnostics to be bounded before the affected estimator is promoted. If T03-C runs
-   very late and returns `MATERIAL_CONCERN`, the predeclared `ROBUSTNESS_REQUIRED` sensitivity
-   would land after promotion. Mitigation adopted here: schedule T03-C immediately after T05, in
-   parallel with T06–T09, rather than at T16.
+2. **2,000-draw calibration count — RESOLVED by D33.** The protocol itself (initial 2,000 draws
+   from master seed 42, `docs/03`/`docs/06`) is unchanged if anyone chooses to run it, but D33
+   removes it from P0 entirely: it is an optional/P1 internal diagnostic, never required before
+   T16. This item is closed, not merely rescheduled.
+3. **Residual sequencing risk from rescheduling — MOOT by D33.** Since T03-C is no longer a
+   mandatory precondition for T16 (item 2 above), a late or `MATERIAL_CONCERN` T03-C result can no
+   longer land "after promotion" in a way that blocks anything — running it late, or not at all,
+   is an accepted outcome under D33. No mitigation scheduling is required.
 4. **Legacy notebook placement.** The four pre-reset notebooks live under `notebooks/legacy/`.
 5. **T03/T03-B mixed-type calibration joint action rule.** D32 requires ED-03 (continuous SMD)
    and ED-03b (categorical TVD) to stay separate diagnostics. No joint null-calibrated action
@@ -395,6 +427,15 @@ Append to "# Frozen rules":
   `f9`,`f11`. Do not compute SMD on a categorical feature and do not combine ED-03/ED-03b via
   `max()` — see `docs/03_assumption_and_audit_spec.md`. This reopens the feature-semantics-
   dependent parts of T03; unaffected identity/duplicate/permutation mechanics are not affected.
+- Per D33 (supersedes the T03-C framing below and in this Issue's original body): T03-C
+  (2,000-draw randomization calibration) and the `X→T` predictability diagnostic (ED-04) are
+  optional/P1 internal diagnostics, not mandatory, and not a precondition for T04, any modeling
+  task, or T16/pre-test freeze. Descriptive ED-03/ED-03b balance remains mandatory *to report*
+  but is explicitly non-blocking — not a P0 causal-validity or correctness gate; an unusual
+  SMD/TVD may trigger investigation but must not automatically block modeling, freeze, or
+  held-out evaluation. Only ED-05 arm/support requirements are genuine P0 gates. Do not report
+  T03-C as blocked/pending elsewhere in this Issue's checklist — remove or relabel any sub-task
+  that frames it, or an ED-03/ED-03b finding, as blocking.
 ```
 
 ## Issue #5 — [T04] Preprocessing & Feature Engineering Strategy
@@ -497,6 +538,13 @@ Append to "# Frozen rules":
   pseudo-outcome construction. D1/D0 pseudo-outcome formulas and the combination rule are
   unchanged. Any prior fitted X-Learner trained on all twelve columns as undifferentiated
   continuous/numeric input is stale development evidence and requires a corrected rerun.
+- Per D29 (AMENDED_BY_D33): primary seed 42 remains required for shortlist entry. Robustness
+  seeds 123/2026 are supporting, non-blocking evidence — report them where computationally
+  reasonable, but do not
+  treat "all three seeds complete" as a precondition for X-Learner's shortlist entry or
+  acceptance unless a specific correctness concern requires stochastic-stability verification. A
+  favorable seed is never selected. `tables/xlearner_deciles.csv` is optional/P1 (T14), not a
+  required artifact for this Issue's Definition of Done.
 ```
 
 ## Issue #11 — [T10] Causal Forest Scale & Implementation Verification
@@ -585,6 +633,14 @@ consumed by `kaggle/03_validation_uncertainty.ipynb` as the optional segment-ana
 (Issue != notebook — see MASTER #20).
 ```
 
+Append (D33 confirmation, no change of role — T14 was already P1):
+
+```markdown
+- Decile/segment tables and figures produced here are optional/P1 for every estimator (D33).
+  No other Issue's Definition of Done (T07-T11) may cite the absence of a decile artifact as a
+  blocking condition.
+```
+
 ## Issue #16 — [T15] Bootstrap Uncertainty & Paired Comparison
 
 Replace "# Execution location" body (keep the existing sentence about the bootstrap/T17 reuse):
@@ -593,6 +649,18 @@ Replace "# Execution location" body (keep the existing sentence about the bootst
 Kaggle-primary governed stage; may use one or more Kaggle sessions. The bootstrap belongs in
 `src/` — T17 reuses [... keep existing continuation unchanged ...]. Public presentation:
 consumed by `kaggle/03_validation_uncertainty.ipynb` (Issue != notebook — see MASTER #20).
+```
+
+Append (D33):
+
+```markdown
+- The 500-draw paired arm-stratified bootstrap itself is unaffected by D33 and remains
+  mandatory (D29) — it quantifies uncertainty in the actual model-comparison result and is
+  fundamentally different from the removed baseline-randomization calibration. If this Issue's
+  checklist also reports robustness-seed (123/2026) results alongside the bootstrap, treat that
+  seed reporting as supporting, non-blocking evidence (D29, AMENDED_BY_D33) — it does not gate
+  this Issue's Definition of Done, and T03-C/`X→T` calibration evidence is not a dependency of
+  this Issue.
 ```
 
 ## Issue #17 — [T16] Pre-Test Implementation Freeze
@@ -611,6 +679,19 @@ Append to "# Frozen rules" (or wherever the freeze checklist enumerates estimato
   (continuous/categorical split honored, and for Causal Forest, whether its categorical
   representation blocker from `docs/adr/ADR-CF-implementation.md` is resolved) alongside the
   existing estimator-role/gate evidence.
+- Per D33: this Issue's freeze checklist must NOT require T03-C's generated 95th/99th-percentile
+  randomization-calibration thresholds, Monte Carlo intervals, or calibration-artifact hashes as
+  a precondition for `pretest_freeze.json`. If this Issue's original body lists them as a
+  `FREEZE_BLOCKER` or required freeze-manifest field, remove that requirement and replace it with
+  the mandatory-to-record descriptive ED-03/ED-03b balance evidence (explicitly non-blocking —
+  not a P0 causal-validity or correctness gate; an unusual value does not block the freeze) and
+  the genuine ED-05 arm-support gate (a real `STOP` condition, unaffected by D33) instead. If
+  T03-C was run anyway (optional/P1), its results may still be recorded for completeness but
+  their absence must not block the freeze.
+- Per D29 (AMENDED_BY_D33): this Issue's freeze checklist must record the 500-draw bootstrap
+  configuration (mandatory, unchanged) and, if reported, robustness-seed (123/2026) results as
+  supporting non-blocking evidence — do not require "all three seeds complete" as a
+  `FREEZE_BLOCKER`; only primary seed 42 is required.
 ```
 
 ## Issue #18 — [T17] One-Shot Held-out Evaluation

@@ -174,8 +174,12 @@ X-Learner enters the pre-test shortlist only when:
    `config_hash`; top-K metrics are reported guardrails and an
    `UNSUPPORTED_METRIC` blocks only its affected comparison, not silent method
    removal;
-4. primary seed `42` and robustness seeds `123` and `2026` are complete and all
-   are reported; a favorable seed is never selected;
+4. primary seed `42` is complete and reported. Robustness seeds `123` and
+   `2026` (D29, AMENDED_BY_D33) are supporting, non-blocking evidence:
+   reported where computationally reasonable, but not a precondition for
+   shortlist entry unless X-Learner's implementation specifically requires
+   stochastic-stability verification for correctness. A favorable seed is
+   never selected;
 5. artifacts and manifests are complete;
 6. no final-test information has been used.
 
@@ -195,11 +199,15 @@ Under `outputs/runs/<run_id>/`, retain and hash at least:
   signed `D0` and `D1`;
 - `models/xlearner_<component>.txt` for nuisance and `tau0`/`tau1` effect stages;
 - `predictions/development/xlearner/seed_<seed>/validation_predictions.parquet`;
-- `tables/validation_selection.csv` and `tables/xlearner_deciles.csv`;
+- `tables/validation_selection.csv`;
 - `audit/xlearner_correctness.json` and the applicable D30 SMOKE/RESOURCE
   runtime/resource report; and
 - after authorized test release, the authoritative prediction path required by
   the experiment-artifact ADR.
+
+`tables/xlearner_deciles.csv` is an optional/P1 (T14) artifact (D33) — useful
+segment-level reporting, never a precondition for X-Learner's shortlist entry
+or acceptance.
 
 Every artifact records or resolves through the manifest to `run_id`, seed,
 split/fold hashes, data/config/code hashes, stage, population, and producer.

@@ -13,6 +13,27 @@ The causal assumptions are defined in the
 [data contract](02_data_contract.md), and repeated-value handling in the
 [duplicate-profile protocol](04_duplicate_profile_protocol.md).
 
+**D33 scope note.** Randomization evidence for this project comes primarily
+from the documented publisher/experimental assignment mechanism (ASL-01), not
+from observed balance. Two different kinds of "mandatory" apply here and must
+not be conflated:
+
+- ED-03 (continuous SMD) and ED-03b (categorical proportions/TVD) are
+  mandatory to *compute and report*, but they are explicitly **non-blocking**
+  — they are not P0 causal-validity or correctness gates. An unusual SMD/TVD
+  may trigger investigation but must not automatically block modeling,
+  freeze, or held-out evaluation.
+- ED-05's observable arm/support requirements are genuine P0 **gates**
+  (`STOP`/`UNSUPPORTED_METRIC`) — a real correctness failure, not a
+  descriptive diagnostic, and unaffected by this distinction.
+
+The 2,000-draw design-null randomization-calibration protocol (formerly
+"T03-C": p95/p99 null thresholds, Monte Carlo intervals for ED-03/ED-04) and
+the X→T predictability gate are **no longer P0** — they are optional/P1
+internal diagnostics, retained below for anyone who chooses to run them, and
+explicitly not a precondition for T16/pre-test freeze. Sections marked
+`SUPERSEDED_BY_D33 (was P0)` describe that optional protocol.
+
 ## Required evidence taxonomy
 
 Each audit item has exactly one primary class:
@@ -56,11 +77,11 @@ No result status is assigned in this matrix.
 | HG-10 | Claim validity | HARD_GATE | Do not label predicted uplift as true ITE, do not call equal-value rows duplicate users, and do not report empirical PEHE against unobserved true ITE. |
 | ED-01 | Missingness and feature distributions | EMPIRICAL_DIAGNOSTIC | Report counts/fractions and arm-specific distributions on the permitted development population. Do not use final-test patterns to select handling. |
 | ED-02 | Treatment/outcome support | EMPIRICAL_DIAGNOSTIC | Report arm and outcome counts/rates for the declared population and split, without hard-coding values in the specification. |
-| ED-03 | Covariate balance (D32 continuous features) | EMPIRICAL_DIAGNOSTIC | Applies only to the D32 continuous features `f0`, `f2`, `f7`, `f10`. Report each continuous feature's SMD, maximum absolute SMD across continuous features, variance ratio, and the selected distributional diagnostics defined below. `abs(SMD)=0.10` may be shown only as a conventional literature-reference value, never as a causal-validity or action gate. Calibrate the maximum absolute SMD against the predeclared design-consistent development-data null distribution: at or below its 95th percentile is `INFO`; above its 95th percentile is `WARNING`; above its 99th percentile is `ROBUSTNESS_REQUIRED`. SMD/mean/variance are not computed on D32 categorical features; see ED-03b. |
-| ED-03b | Covariate balance (D32 categorical features) | EMPIRICAL_DIAGNOSTIC | Applies only to the D32 categorical features `f1`, `f3`, `f4`, `f5`, `f6`, `f8`, `f9`, `f11`. Report a per-feature category-distribution diagnostic such as total variation distance between arms, `TVD = 0.5 * sum_c abs(P(X=c\|T=1) - P(X=c\|T=0))`, together with category count and missing counts by arm. Categorical numeric tokens are never given an SMD, mean, or variance interpretation, and are never combined with ED-03 via `max()` across the two families — they are different quantities on different scales. `OPEN_DECISION / BLOCKED_PENDING_MIXED_TYPE_SPEC`: no null-calibrated action threshold (a categorical analog of the ED-03 95th/99th percentile mapping) is defined here; this document does not invent one. Report TVD as `INFO`-only evidence until a future decision adopts a calibrated threshold. |
-| ED-04 | Treatment predictability | EMPIRICAL_DIAGNOSTIC | Report out-of-fold ROC-AUC and log loss from the fixed `X→T` classifier pipeline below, fit with D32 category-aware representation (categorical features passed through the estimator's native categorical handling, not as raw continuous tokens). Rerun the complete pipeline under each design-consistent null assignment and calibrate the high-direction statistics against their null distributions: at or below the 95th percentile is `INFO`; above the 95th percentile is `WARNING`; above the 99th percentile is `ROBUSTNESS_REQUIRED`. High predictability is an investigation signal; low predictability does not prove randomization. Accuracy is not an accepted substitute. |
-| ED-05 | Observable arm support and overlap | EMPIRICAL_DIAGNOSTIC | Observable arm support is primary. Zero treated or zero control rows globally is `STOP`; missing arm support required by a training or cross-fitting fold is `STOP` for that fit; zero treated or zero control rows in a subgroup or top-K set is `UNSUPPORTED_METRIC` for that estimate. Report local arm counts, outcome counts, treatment fractions, cross-fitted propensity summaries, and sparse-region mass. Fixed propensity bands, clipping, or trimming are not primary population gates. Any trimming is a separately declared sensitivity estimand because it changes the target population. |
-| ED-06 | Duplicate profiles and origin | EMPIRICAL_DIAGNOSTIC | Apply every named definition and source/precision comparison in document 04. Do not infer duplicated people. |
+| ED-03 | Covariate balance (D32 continuous features) | EMPIRICAL_DIAGNOSTIC | Applies only to the D32 continuous features `f0`, `f2`, `f7`, `f10`. Report each continuous feature's SMD, maximum absolute SMD across continuous features, variance ratio, and optionally compact distributional summaries when they materially help interpretation. `abs(SMD)=0.10` may be shown only as a conventional literature-reference value, never as a causal-validity or action gate. Per D33, this is a **required but non-blocking descriptive/sanity diagnostic reported as `INFO`** — not a P0 causal-validity or correctness gate; an unusual SMD may trigger investigation but must not automatically block modeling, freeze, or held-out evaluation. No null-calibrated 95th/99th-percentile action mapping is required. A project may optionally run the full design-null calibration described below and use its mapping, but doing so is never a precondition for any P0 task. SMD/mean/variance are not computed on D32 categorical features; see ED-03b. |
+| ED-03b | Covariate balance (D32 categorical features) | EMPIRICAL_DIAGNOSTIC | Applies only to the D32 categorical features `f1`, `f3`, `f4`, `f5`, `f6`, `f8`, `f9`, `f11`. Report per-feature category proportions and a category-distribution diagnostic such as total variation distance between arms, `TVD = 0.5 * sum_c abs(P(X=c\|T=1) - P(X=c\|T=0))`, together with category count and missing counts by arm. Categorical numeric tokens are never given an SMD, mean, or variance interpretation, and are never combined with ED-03 via `max()` across the two families — they are different quantities on different scales. Per D33, this is **required but non-blocking**: reported as `INFO`-only descriptive evidence, not a P0 causal-validity or correctness gate; an unusual TVD may trigger investigation but must not automatically block modeling, freeze, or held-out evaluation. No null-calibrated action threshold is defined or required. |
+| ED-04 | Treatment predictability (OPTIONAL, D33) | EMPIRICAL_DIAGNOSTIC | **Optional internal sanity diagnostic, not a P0 gate.** If retained, report out-of-fold ROC-AUC and log loss from a simple, descriptive `X→T` classifier pipeline fit with D32 category-aware representation (categorical features passed through the estimator's native categorical handling, not as raw continuous tokens). It is not proof of randomization, not required before T16, and not required for model training or final evaluation. If run, report the statistics as `INFO`; a full design-null permutation-calibration subsystem (described below) is optional and never mandatory. High predictability is an investigation signal only; low predictability does not prove randomization. Accuracy is not an accepted substitute for ROC-AUC/log loss. |
+| ED-05 | Observable arm support and overlap | EMPIRICAL_DIAGNOSTIC | Observable arm support is primary and **remains mandatory** (D33): zero treated or zero control rows globally is `STOP`; missing arm support required by a training or cross-fitting fold is `STOP` for that fit; zero treated or zero control rows in a subgroup or top-K set is `UNSUPPORTED_METRIC` for that estimate. Report local arm counts, outcome counts, and treatment fractions. Cross-fitted propensity summaries, sparse-region mass, and other large propensity-diagnostic suites are OPTIONAL unless a concrete modeling problem requires them. Fixed propensity bands, clipping, or trimming are not primary population gates. Any trimming is a separately declared sensitivity estimand because it changes the target population. |
+| ED-06 | Duplicate profiles and origin | EMPIRICAL_DIAGNOSTIC | DP-01 (source-row identity: uniqueness, split disjointness, row accounting) is mandatory and already covered by HG-07. DP-02 through DP-07 (detailed profile taxonomy, cross-split overlap, precision/collision reconciliation) in document 04 are optional/sensitivity diagnostics (D33) — apply them when investigating a specific question, not as a default requirement. Do not infer duplicated people. |
 | ED-07 | Reproducibility | EMPIRICAL_DIAGNOSTIC | Re-run deterministic data selection/splitting with the declared environment and seeds; compare manifests and canonical source-ordinal identities. Cross-run equivalence is valid only when the canonical raw checksum also matches. |
 | ASL-01 | Assignment mechanism/exchangeability | ASSUMPTION_SUPPORT_OR_LIMITATION | Cite publisher or experiment documentation for randomization, allocation, exclusions, and deviations. Balance/predictability diagnostics are supporting signals only. |
 | ASL-02 | Feature timing | ASSUMPTION_SUPPORT_OR_LIMITATION | Cite source definitions showing all `f0`–`f11` precede assignment. Until then their pre-treatment status is `PROVISIONAL`. |
@@ -73,11 +94,20 @@ No result status is assigned in this matrix.
 
 The SMD, treatment-predictability, and propensity summaries are diagnostics, not
 causal-identification theorems. Sprint 1 freezes their derivation algorithms and
-evidence requirements, not universal numerical cutoffs. The generated null
-percentiles are Sprint 2 development artifacts and must be finalized before the
-pre-test executable freeze without held-out-test access.
+evidence requirements, not universal numerical cutoffs. Per D33, the full
+design-null calibration protocol below is optional/P1: if run, its generated
+null percentiles are development artifacts computed without held-out-test
+access, but they are not required before the pre-test executable freeze.
 
-## Design-calibrated diagnostic protocol
+## Optional / P1 — full design-null calibration protocol (SUPERSEDED_BY_D33 as a P0 requirement)
+
+This entire section describes a full randomization-calibration subsystem
+(design-null permutations, generated percentiles, Monte Carlo intervals) that
+was mandatory P0 evidence before D33 and is now an optional/P1 internal
+diagnostic. It is preserved, not deleted, for anyone who chooses to run it —
+for example to investigate an ED-03/ED-03b/ED-04 finding that looks
+surprising. Nothing in this section is required for T16/pre-test freeze; see
+the "D33 scope note" above and D33 in the decision register.
 
 ### Shared randomization reference
 
@@ -123,6 +153,11 @@ These artifacts contain no held-out rows or held-out-derived values.
 
 ### ED-03 calculation and action mapping
 
+The descriptive computation in this subsection (SMD, variance ratio, quantiles,
+KS distance) is the mandatory ED-03 evidence and is reported as `INFO` per
+D33. Only the null-calibrated percentile table below it is part of the
+optional/P1 protocol this section covers.
+
 ED-03 applies only to the D32 continuous features `f0`, `f2`, `f7`, `f10`. For
 each, compute the treated-minus-control SMD using the pooled within-arm
 standard deviation. Report the sign and absolute value. Use the feature's
@@ -142,6 +177,12 @@ D32 categorical feature — see ED-03b.
 
 ### ED-03b calculation and action mapping
 
+This subsection's descriptive computation (category proportions, TVD, missing
+counts) is mandatory ED-03b evidence (D33), not part of the optional/P1
+protocol this section otherwise covers — no null-calibrated threshold exists
+or is planned for ED-03b, so there is no optional calibration layer to add on
+top of it.
+
 ED-03b applies only to the D32 categorical features `f1`, `f3`, `f4`, `f5`,
 `f6`, `f8`, `f9`, `f11`. For each, using non-missing observations within each
 arm, report the per-category proportion in the treated and control arms, the
@@ -160,16 +201,21 @@ statistic (for example, do not take `max()` across SMD and TVD — they are
 different quantities on different scales).
 
 The conventional reference line `|SMD|=0.10` may appear in plots and tables only
-with the label `LITERATURE_REFERENCE_NOT_GATE`. It does not override the
-design-calibrated disposition:
+with the label `LITERATURE_REFERENCE_NOT_GATE`. The table below is the
+**optional** design-calibrated disposition (only meaningful if the full
+calibration protocol in this section is actually run); by default (D33) ED-03
+is reported descriptively as `INFO` with no calibrated action mapping at all:
 
-| Observed maximum absolute SMD | `evidence_status` | `required_action` |
+| Observed maximum absolute SMD (if the optional calibration was run) | `evidence_status` | `required_action` |
 |---|---|---|
 | At or below the generated 95th null percentile | `INFO` | `PASS` |
 | Above the 95th and at or below the 99th null percentile | `WARNING` | `WARNING`; inspect feature-level, tail, split, and leakage evidence |
 | Above the 99th null percentile | `MATERIAL_CONCERN` | `ROBUSTNESS_REQUIRED`; execute the predeclared balance/support sensitivity before promotion |
 
-### ED-04 calculation and action mapping
+### ED-04 calculation and action mapping (optional, D33)
+
+This entire subsection describes the optional internal sanity diagnostic; none
+of it is required before T16 or for model training/final evaluation.
 
 The treatment-predictability diagnostic uses exactly `X=[f0,...,f11]` and a
 fixed, hashed LightGBM binary-classifier configuration with native
@@ -202,6 +248,11 @@ weak classifier or limited power and does not prove randomization.
 
 ### ED-05 observable support protocol
 
+**This subsection's primary rules are mandatory (D33), not part of the
+optional/P1 protocol** this section otherwise covers — only the "fit
+propensity summaries out of fold" paragraph below the primary rules describes
+an optional larger diagnostic suite.
+
 Before any propensity summary, report global, split, fold, subgroup, and each
 top-K set's treated/control row counts, treatment fractions, and treated/control
 outcome counts. Apply these primary rules:
@@ -213,17 +264,19 @@ outcome counts. Apply these primary rules:
   `UNSUPPORTED_METRIC` for that local estimate, with no smoothing, borrowing,
   or fabricated replacement.
 
-Fit propensity summaries out of fold on development data using the same frozen
-classifier-pipeline discipline as ED-04. Report distribution quantiles by arm
-and overall, calibration summaries, and the mass and arm/outcome counts in
-predeclared sparse regions. A sparse region is an estimator-defined reporting
-cell, tree leaf, subgroup, or top-K set whose local arm count is below the
-minimum required by that estimator's frozen fitting or metric rule; it is not
-defined by a universal propensity interval. Null-relative propensity summaries
-may be reported as contextual `INFO`, `WARNING`, or `ROBUSTNESS_REQUIRED`
-evidence using the same generated 95th/99th-percentile convention, but they do
-not supersede the observable-support rules or exclude rows from the primary
-population.
+Large propensity-diagnostic suites are OPTIONAL (D33) unless a concrete
+modeling problem requires them: fitting propensity summaries out of fold on
+development data using the same classifier-pipeline discipline as ED-04,
+distribution quantiles by arm and overall, calibration summaries, and mass/
+arm/outcome counts in predeclared sparse regions. A sparse region is an
+estimator-defined reporting cell, tree leaf, subgroup, or top-K set whose
+local arm count is below the minimum required by that estimator's frozen
+fitting or metric rule; it is not defined by a universal propensity interval.
+If the optional design-null calibration protocol above is run, null-relative
+propensity summaries may additionally be reported as contextual `INFO`,
+`WARNING`, or `ROBUSTNESS_REQUIRED` evidence using its percentile convention,
+but none of this supersedes the mandatory observable-support rules above or
+excludes rows from the primary population.
 
 No fixed propensity interval, clipping, or trimming is a primary population
 gate. If clipping is required inside a conditional estimator, its value and
@@ -236,18 +289,22 @@ eligible-population estimand after results are seen.
 
 | Failure mode | Selected metric | Alternative metrics | Supporting primary literature | Applicability and limitations | Threshold derivation method | Required action | Calibration artifact |
 |---|---|---|---|---|---|---|---|
-| Marginal covariate imbalance inconsistent with the declared design (D32 continuous features only: `f0`,`f2`,`f7`,`f10`) | Per-feature signed/absolute SMD and maximum absolute SMD; variance ratios and ECDF/quantile diagnostics are always co-reported | Mahalanobis balance, higher-moment contrasts, graphical balance checks | [Austin (2009)](https://pubmed.ncbi.nlm.nih.gov/19757444/); [Hansen and Bowers (2008)](https://projecteuclid.org/journals/statistical-science/volume-23/issue-2/Covariate-Balance-in-Simple-Stratified-and-Clustered-Comparative-Studies/10.1214/08-STS254.full) | SMD is scale-stable and descriptive, but neither a favorable SMD nor the conventional `0.10` reference proves assignment validity; the maximum statistic is multiplicity-aware only through the simulated design reference; not meaningful on categorical numeric tokens, so it is not applied to the eight D32 categorical features | Empirical 95th/99th percentiles of maximum absolute SMD under the shared design-consistent null, with Monte Carlo intervals | `PASS`/`WARNING`/`ROBUSTNESS_REQUIRED` according to the mapping above | `audit/randomization_calibration/thresholds.json` plus `null_draws.parquet` |
-| Marginal category-distribution imbalance inconsistent with the declared design (D32 categorical features only: `f1`,`f3`,`f4`,`f5`,`f6`,`f8`,`f9`,`f11`) | Per-feature total variation distance (TVD) between arms; category count and missing counts by arm are co-reported | Chi-squared/G-test of independence, Jensen-Shannon divergence | [Austin (2009)](https://pubmed.ncbi.nlm.nih.gov/19757444/) (general balance-diagnostic framing; not specific to token categoricals) | TVD does not assume ordinal structure and does not treat category tokens as numeric magnitude; no null-calibrated action threshold is defined yet | `OPEN_DECISION / BLOCKED_PENDING_MIXED_TYPE_SPEC`: not yet derived; this document does not invent one | `INFO`-only until a future decision adopts a calibrated threshold | Reported alongside the ED-03 calibration artifacts; no dedicated artifact name is frozen yet |
-| Multivariate treatment predictability inconsistent with the declared design | Cross-fitted ROC-AUC and log-loss gain from a fixed classifier pipeline | Classification accuracy, Brier score, multivariate mean tests, energy/MMD tests | [Gagnon-Bartsch and Shem-Tov (2016)](https://arxiv.org/abs/1611.06408); [Hansen and Bowers (2008)](https://projecteuclid.org/journals/statistical-science/volume-23/issue-2/Covariate-Balance-in-Simple-Stratified-and-Clustered-Comparative-Studies/10.1214/08-STS254.full) | Can detect nonlinear joint predictability, but depends on classifier power and implementation; low predictability is not proof of randomization | Rerun the full cross-fitted pipeline for each null assignment; use each statistic's generated 95th/99th percentiles and the more severe result | `PASS`/`WARNING`/`ROBUSTNESS_REQUIRED`; investigate before promotion when elevated | Same four randomization-calibration artifacts, including classifier/fold hashes |
+| Marginal covariate imbalance inconsistent with the declared design (D32 continuous features only: `f0`,`f2`,`f7`,`f10`) | Per-feature signed/absolute SMD and maximum absolute SMD; variance ratios and ECDF/quantile diagnostics are always co-reported | Mahalanobis balance, higher-moment contrasts, graphical balance checks | [Austin (2009)](https://pubmed.ncbi.nlm.nih.gov/19757444/); [Hansen and Bowers (2008)](https://projecteuclid.org/journals/statistical-science/volume-23/issue-2/Covariate-Balance-in-Simple-Stratified-and-Clustered-Comparative-Studies/10.1214/08-STS254.full) | SMD is scale-stable and descriptive, but neither a favorable SMD nor the conventional `0.10` reference proves assignment validity; required but explicitly non-blocking (D33) — not a P0 causal-validity or correctness gate; not meaningful on categorical numeric tokens, so it is not applied to the eight D32 categorical features | None mandatory (D33): reported descriptively as `INFO`. Empirical 95th/99th percentiles under the design-null are an optional/P1 layer, not required for any P0 task | `PASS` (descriptive `INFO`); optional calibrated `WARNING`/`ROBUSTNESS_REQUIRED` only if that protocol is run | None required; `audit/randomization_calibration/thresholds.json` plus `null_draws.parquet` only if the optional protocol is run |
+| Marginal category-distribution imbalance inconsistent with the declared design (D32 categorical features only: `f1`,`f3`,`f4`,`f5`,`f6`,`f8`,`f9`,`f11`) | Per-feature total variation distance (TVD) between arms; category count and missing counts by arm are co-reported | Chi-squared/G-test of independence, Jensen-Shannon divergence | [Austin (2009)](https://pubmed.ncbi.nlm.nih.gov/19757444/) (general balance-diagnostic framing; not specific to token categoricals) | TVD does not assume ordinal structure and does not treat category tokens as numeric magnitude; required but explicitly non-blocking (D33) — not a P0 causal-validity or correctness gate; no null-calibrated action threshold is defined or planned | Not applicable — descriptive only (D33) | `INFO`-only | None required |
+| Multivariate treatment predictability inconsistent with the declared design (OPTIONAL, D33) | Cross-fitted ROC-AUC and log-loss gain from a fixed classifier pipeline | Classification accuracy, Brier score, multivariate mean tests, energy/MMD tests | [Gagnon-Bartsch and Shem-Tov (2016)](https://arxiv.org/abs/1611.06408); [Hansen and Bowers (2008)](https://projecteuclid.org/journals/statistical-science/volume-23/issue-2/Covariate-Balance-in-Simple-Stratified-and-Clustered-Comparative-Studies/10.1214/08-STS254.full) | Not a P0 gate, not proof of randomization, not required before T16 or for model training/final evaluation; depends on classifier power and implementation | None mandatory; if run, use the generated 95th/99th percentiles under the shared null (optional/P1) | `INFO` if reported descriptively; optional calibrated `WARNING`/`ROBUSTNESS_REQUIRED` only if that protocol is run | None required unless the optional protocol is run |
 | Missing or sparse observable arm support for a requested fit or local estimate | Global/fold/local arm and outcome counts, treatment fractions, cross-fitted propensity summaries, sparse-region mass | Fixed propensity bands, effective sample size, density ratios, trimming rules | [Crump et al. (2009)](https://academic.oup.com/biomet/article-abstract/96/1/187/235329) | Counts directly establish whether the requested comparison is observable. Propensity summaries are model-dependent; trimming changes the target population and therefore cannot be a silent primary fix | Deterministic count gates are primary; any contextual continuous diagnostic uses the shared design-reference percentiles, not universal propensity bands | `STOP` for global/required-fold failure; `UNSUPPORTED_METRIC` for an unsupported subgroup/top-K estimate; contextual escalation otherwise | Support tables in the audit artifact plus the randomization-calibration manifest when contextual calibration is used |
 
 ## Audit ordering
 
 1. Freeze the intended input and create the lineage manifest.
 2. Run HG-01 through HG-07 before any model fit.
-3. Freeze the development-only calibration method in Sprint 1; in Sprint 2,
-   generate and hash its null thresholds on development data before the pre-test
-   executable freeze.
+3. Report descriptive ED-03/ED-03b balance (mandatory to report, but
+   non-blocking — not a P0 gate, D33) and enforce ED-05 arm-support `STOP`/
+   `UNSUPPORTED_METRIC` rules (a genuine P0 gate, unaffected by D33). The
+   optional/P1 design-null calibration protocol, if run, may execute at any
+   point convenient before its own interpretation is used — it is not a
+   precondition for any later stage, including the pre-test executable
+   freeze.
 4. Run ED-01 through ED-07 only on populations permitted by the
    [experiment protocol](06_experiment_protocol.md).
 5. Record ASL-01 through ASL-08 with citations and explicit limitations.
@@ -326,9 +383,9 @@ their execution evidence belongs to Sprint 2.
 | Fold leakage | A row's nuisance prediction comes from a model trained on that row, or a test row enters a training fold. | `STOP` the affected estimator; rebuild fold membership and all dependent pseudo-outcomes. |
 | Row alignment | Prediction length, order, or observation identity fails one-to-one reconciliation with its declared population. | `STOP`; positional repair or silent reordering is forbidden. |
 | Independent ATE reconciliation | Independent assigned-arm calculations agree within the scalar tolerance in document 06. | `PASS`; a difference above tolerance is `STOP` until the formula, population, or alignment error is resolved. |
-| Covariate balance (D32 continuous features) | Maximum absolute SMD at/below the generated design-null 95th percentile, above the 95th through the 99th, or above the 99th. | `INFO` evidence with `PASS`, `WARNING`, or `MATERIAL_CONCERN` evidence with `ROBUSTNESS_REQUIRED`, respectively. The conventional `abs(SMD)=0.10` line is reference-only. |
-| Covariate balance (D32 categorical features) | Per-feature TVD and category-distribution summary reported; no calibrated action threshold defined. | `INFO`-only; `OPEN_DECISION / BLOCKED_PENDING_MIXED_TYPE_SPEC` for any escalation rule until a future decision adopts one. Never combined with the continuous-feature SMD result via `max()`. |
-| `X→T` predictability | Cross-fitted ROC-AUC and log-loss gain are each compared with their generated full-pipeline null distributions. | At/below both 95th percentiles: `INFO` evidence with `PASS`; either above its 95th: `WARNING`; either above its 99th: `MATERIAL_CONCERN` with `ROBUSTNESS_REQUIRED`. |
+| Covariate balance (D32 continuous features) | SMD, variance ratio, and quantile diagnostics computed and reported (D33: required, non-blocking, not a P0 causal-validity/correctness gate). | `INFO` evidence with `PASS`. Never an automatic `STOP`/block on modeling, freeze, or held-out evaluation. The conventional `abs(SMD)=0.10` line is reference-only. Optional/P1: if the design-null calibration protocol is run, `WARNING`/`ROBUSTNESS_REQUIRED` per its percentile mapping — a sensitivity trigger, still not a `STOP`. |
+| Covariate balance (D32 categorical features) | Per-feature TVD and category-distribution summary reported (D33: required, non-blocking); no calibrated action threshold defined or planned. | `INFO`-only. Never an automatic `STOP`/block. Never combined with the continuous-feature SMD result via `max()`. |
+| `X→T` predictability (OPTIONAL, D33) | If run, cross-fitted ROC-AUC and log-loss gain reported descriptively. Not a P0 gate, not required before T16. | `INFO` if reported. Optional/P1: if compared against the generated full-pipeline null distributions, `WARNING`/`MATERIAL_CONCERN` with `ROBUSTNESS_REQUIRED` per that protocol's mapping. |
 | Observable/local support | Either global arm count is zero; a required fit/fold lacks an arm; or a subgroup/top-K set lacks an arm. | `STOP` globally, `STOP` the affected fit, or `UNSUPPORTED_METRIC` for the affected local estimate, respectively. Cross-fitted propensity summaries and sparse-region mass are reported without a universal interval gate. |
 | No local arm support | A local region or top-K set has no treated or no control rows. | `UNSUPPORTED_METRIC` for the affected estimate; do not smooth, borrow, or fabricate it. |
 | Top-K converter support | Both arms exist but either arm has zero converters in the selected set. | `WARNING` and explicit low-event support reporting; if the required statistic or interval is undefined, use `UNSUPPORTED_METRIC`. |
@@ -339,6 +396,7 @@ their execution evidence belongs to Sprint 2.
 
 SMD, AUC/log-loss, and propensity summaries use project reporting/action rules,
 not causal-identification theorems. Their design-null derivation algorithm is
-frozen here. Sprint 2-generated threshold values and Monte Carlo uncertainty
-must be recorded in the calibration manifest before the pre-test executable
-freeze and cannot be revised after test access.
+frozen here as an optional/P1 protocol (D33); it is not required for the
+pre-test executable freeze. If the optional calibration is run, its generated
+threshold values and Monte Carlo uncertainty must be recorded in the
+calibration manifest and cannot be revised after test access.

@@ -9,6 +9,15 @@ No duplicate count or origin conclusion is recorded here.
 The default analysis preserves all loaded rows. Removing, collapsing, grouping,
 or reweighting rows is not permitted merely because values repeat.
 
+**D33 scope note.** Only DP-01 (source-row identity: uniqueness, split
+disjointness, row accounting) is mandatory — it is already covered by HG-07.
+DP-02 through DP-07 (detailed profile taxonomy, cross-split profile overlap
+beyond leakage interpretation, precision/collision reconciliation) are
+optional/sensitivity diagnostics: useful when investigating a specific
+question, never a required precondition for any P0 task. This document's
+algorithms and definitions are unchanged; only their mandatory-vs-optional
+status is reclassified.
+
 `DEFERRED`: any alternative primary duplicate-removal or weighting policy. Sprint
 1 keeps all loaded rows. A source-backed pipeline error is corrected at origin;
 development-only sensitivity cannot change the primary policy without a future
@@ -125,13 +134,16 @@ post-final model-selection analysis.
 ## Required artifacts for an executed duplicate audit
 
 - input manifest and checksums;
-- definition table with exact column lists and precision;
-- machine-readable DP-01 through DP-07 summaries as applicable;
-- source/processed row-count reconciliation;
-- group-characteristic summaries on the permitted population;
-- any investigated example groups with sensitive values excluded;
+- DP-01 source-row identity result (mandatory: uniqueness, split disjointness,
+  row accounting);
 - status, interpretation, limitations, and decision IDs;
 - explicit statement that no result identifies duplicate users without an
   appropriate source identity.
+
+Optional/sensitivity, when DP-02 through DP-07 are run (D33): definition table
+with exact column lists and precision, machine-readable DP-02 through DP-07
+summaries, source/processed row-count reconciliation, group-characteristic
+summaries on the permitted population, and any investigated example groups
+with sensitive values excluded.
 
 No numeric value, PASS/FAIL result, or origin conclusion belongs in this protocol.

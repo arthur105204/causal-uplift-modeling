@@ -29,15 +29,15 @@ The protocol inherits the [causal contract](01_causal_contract.md),
 | Outer stratification | Joint `(T,Y)` stratum. |
 | Outer split seed | `42`, used for both split stages. |
 | Primary model seed | `42`. |
-| Robustness model seeds | `42`, `123`, `2026`. |
+| Robustness model seeds | `42`, `123`, `2026` (D29, AMENDED_BY_D33). Primary seed `42` is required; `123`/`2026` are supporting, non-blocking evidence unless a specific estimator implementation requires stochastic-stability verification for correctness. Never select the favorable seed. Causal Forest follows D31's separate one-shot seed policy, unaffected and not superseded by D33. |
 | Random-ranking seed | `42`. |
 | Random-permutation seed | `42`. |
-| Diagnostic null calibration | Document 03's design-consistent assignment reference; initial `2,000` replications from master seed `42`, with deterministic stored sub-seeds and Monte Carlo intervals. Generated values are development artifacts, not universal constants. |
+| Diagnostic null calibration (OPTIONAL/P1, D33) | Document 03's design-consistent assignment reference; initial `2,000` replications from master seed `42`, with deterministic stored sub-seeds and Monte Carlo intervals, if run. No longer a precondition for T16/pre-test freeze. Mandatory evidence instead: ED-03/ED-03b descriptive balance (reported, but explicitly non-blocking — not a P0 causal-validity/correctness gate) and ED-05 arm support (a genuine P0 `STOP`/`UNSUPPORTED_METRIC` gate). Generated values, if produced, are development artifacts, not universal constants. |
 | DR cross-fitting | Five folds, joint `(T,Y)` stratification, fold seed `42`; required only if DR is implemented. |
 | X-Learner cross-fitting | Primary: deterministic two-fold training-only cross-fitting, joint `(T,Y)` stratification, fold seed `42`. Five-fold is a predeclared validation sensitivity/promotion candidate, never an automatic replacement. |
 | Causal Forest | Accepted `MAIN_COMPARATOR` planned for Sprint 2; exact implementation is provisional and test-ineligible until all CF ADR gates pass. |
 | Cross-language CF bridge | `DEFERRED` unless the CF implementation ADR proves it is required. |
-| Bootstrap | `500` paired, treatment-arm-stratified resamples; models are not retrained inside draws. |
+| Bootstrap | `500` paired, treatment-arm-stratified resamples; models are not retrained inside draws (D29, mandatory and unchanged by D33 — quantifies uncertainty in the actual model-comparison result, fundamentally different from the removed baseline-randomization calibration). |
 | Bootstrap seed | `42`. |
 | Random permutations | `200`. |
 | Early stopping | Up to `50` rounds on validation during development only. |
@@ -163,18 +163,28 @@ All work in this stage is completed before freeze and uses no test information.
   synthetic-effect, leakage, honesty/support, resource, validation, seed, and
   pre-test-freeze gates in its ADR. It cannot enter held-out evaluation before
   all gates pass and cannot be silently omitted before they are evaluated.
-- Refit candidates for robustness seeds `42`, `123`, and `2026`, scoring only
-  validation. The primary method/model seed remains `42`; robustness does not
-  select a favorable seed.
+- Refit candidates for robustness seeds `42`, `123`, and `2026` where
+  computationally reasonable, scoring only validation. The primary method/
+  model seed remains `42`; robustness does not select a favorable seed.
+  Per D33, `123`/`2026` are supporting, non-blocking evidence — they are not
+  a universal P0 precondition for an estimator's shortlist entry unless that
+  estimator's implementation specifically requires stochastic-stability
+  verification for correctness. Causal Forest's seed policy remains governed
+  separately by D31 (one-shot compute constraint), unaffected by this.
 - Run any duplicate keep/drop/weighting sensitivity only within training and
   validation. Test-based deduplication sensitivity is prohibited.
 - Run the predeclared 500-draw paired arm-stratified validation bootstrap on
   already-computed validation scores when required for DR promotion; do not
   retrain inside bootstrap draws.
-- Run document 03's predeclared design-consistent randomization calibration,
-  probability diagnostics, and permitted overlap/stability checks on development
-  data only. Finalize the generated 95th/99th-percentile values, Monte Carlo
-  intervals, code revision, and artifact hashes before Stage 5.
+- Report document 03's mandatory descriptive balance (ED-03 continuous SMD,
+  ED-03b categorical TVD — required to report, but explicitly non-blocking
+  and not a P0 causal-validity/correctness gate, D33) and enforce arm support
+  (ED-05, a genuine P0 `STOP`/`UNSUPPORTED_METRIC` gate) on development data
+  only. Per D33, the full design-null randomization-calibration protocol
+  (2,000-draw permutations, generated 95th/99th-percentile values, Monte Carlo
+  intervals) and the X→T predictability diagnostic are optional/P1 — they may
+  be run at
+  this stage for investigation, but are not a precondition for Stage 5.
 
 Current code paths that compute repeated-seed or duplicate-policy comparisons on
 the test partition are non-conforming for selection and must be moved to this
@@ -223,9 +233,13 @@ Write `outputs/runs/<run_id>/audit/pretest_freeze.json` and lock:
 - learner parameters, selected iteration counts, primary and robustness seeds;
 - cross-fitting folds/seeds and resolved X-Learner and DR nuisance,
   pseudo-effect, propensity/weighting, and final-stage conventions;
-- document 03's randomization-reference method or labeled conditional-permutation
-  approximation, replication seeds/count, generated diagnostic percentiles,
-  Monte Carlo intervals, and calibration-artifact hashes;
+- document 03's mandatory descriptive balance (ED-03/ED-03b — recorded for
+  the record, but explicitly non-blocking and not a P0 causal-validity/
+  correctness gate, D33) and arm-support (ED-05 — a genuine P0 gate,
+  unaffected by D33) evidence; the optional/P1 randomization-calibration
+  protocol's percentiles/Monte Carlo intervals/artifact hashes are recorded
+  here only if that protocol was actually run — their absence, or an unusual
+  ED-03/ED-03b value, does not block the freeze;
 - exact metric formulas, coverages, tie rules, curve grid, uncertainty procedure,
   and promotion/claim rules;
 - whether optional `visit` is available and schema-valid, plus its secondary
@@ -284,8 +298,13 @@ seed, metric, cutoff, or model to be replaced on the same test partition.
 Seeds govern stochastic sampling, splitting, model fitting, cross-fitting,
 random ranking, permutations, and bootstrap. Each component records its seed
 separately even when the value is `42`. No seed is changed or selected after
-observing validation or test performance. Seed robustness reports all configured
-seeds; it does not promote the best seed.
+observing validation or test performance. Seed robustness reports all
+configured seeds where computationally reasonable; it does not promote the
+best seed. Per D29 (AMENDED_BY_D33), the 500-draw bootstrap seed and primary
+model seed `42` are mandatory; robustness seeds `123`/`2026` are supporting,
+non-blocking evidence, not a precondition for any estimator's shortlist entry
+or acceptance. D31's Causal Forest one-shot seed policy is a separate,
+unaffected exception.
 
 ## Failure and rerun policy
 
