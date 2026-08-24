@@ -38,15 +38,24 @@ role, and does not authorize a held-out comparison. The exact LightGBM package,
 configuration, objectives, and serialization behavior remain
 `OPEN_FOR_SPRINT2`.
 
+## Feature representation contract (D32)
+
 Per D32, `X` is not a uniform numeric block: `f0`, `f2`, `f7`, `f10` are
 continuous and `f1`, `f3`, `f4`, `f5`, `f6`, `f8`, `f9`, `f11` are categorical
-numeric tokens with no ordinal interpretation. Every LightGBM component listed
-above must use LightGBM's native categorical representation for the
-categorical group and plain numeric representation for the continuous group;
-passing all twelve columns as an undifferentiated continuous/numeric matrix is
-not a conforming implementation of this ADR. D17's "12 numeric features"
-rationale characterized column count and scale, not per-column semantic type;
-D32 is the authoritative semantic characterization.
+numeric tokens with no ordinal interpretation, per the publisher-defined
+feature semantics in
+[the data contract](../02_data_contract.md#physical-storage-vs-semantic-feature-type).
+Every LightGBM component listed above must use LightGBM's native, train-fitted
+categorical representation (`src/preprocessing.py`'s `LightGBMFeatureTransform`)
+for the categorical group and plain `float64` numeric representation for the
+continuous group before fitting or prediction; passing all twelve columns as
+an undifferentiated continuous/numeric matrix is not a conforming
+implementation of this ADR. LightGBM's own native categorical support is what
+makes it viable for this mixed-type feature set without a separate encoding
+step; this does not extend to Causal Forest (see
+[ADR-CF-implementation](ADR-CF-implementation.md)). D17's "12 numeric
+features" rationale characterized column count and scale, not per-column
+semantic type; D32 is the authoritative semantic characterization.
 
 ## Objective contract
 

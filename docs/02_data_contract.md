@@ -61,14 +61,15 @@ uncertainty strengthens, rather than relaxes, their exclusion from `X`.
 
 Physical storage dtype and semantic feature type are separate contracts.
 Every `f0`–`f11` column is stored as `float64` in raw and processed form; that
-storage fact does not by itself make a column continuous or ordinal.
+storage fact does not by itself make a column continuous or ordinal, and it
+does not change under this distinction.
 
 Per decision D32, the publisher-defined semantic split within `X` is:
 
 | Semantic type | Columns | Representation implication |
 |---|---|---|
 | Continuous | `f0`, `f2`, `f7`, `f10` | Used directly as numeric model input; eligible for mean/SMD/variance-style diagnostics and quantile summaries. |
-| Categorical | `f1`, `f3`, `f4`, `f5`, `f6`, `f8`, `f9`, `f11` | Anonymized numeric tokens with **no ordinal interpretation**. Numeric magnitude, mean, variance, and SMD over the raw token value are not meaningful. Requires a categorical-aware model representation (document 05 / `ADR-base-learner.md` for LightGBM's native categorical handling); Causal Forest has no LightGBM-equivalent native categorical support, and its representation is an open implementation decision tracked by `ADR-CF-implementation.md`, not decided here. |
+| Categorical | `f1`, `f3`, `f4`, `f5`, `f6`, `f8`, `f9`, `f11` | Anonymized numeric tokens with **no ordinal interpretation**. Numeric magnitude, mean, variance, and SMD over the raw token value are not meaningful. Requires a categorical-aware model representation; Causal Forest has no LightGBM-equivalent native categorical support, and its representation is an open implementation decision tracked by [ADR-CF-implementation](adr/ADR-CF-implementation.md), not decided here. |
 
 This split governs model input representation and diagnostic eligibility; it
 does not change the canonical column order, the raw/processed `float64`
@@ -77,6 +78,26 @@ twelve columns as a single undifferentiated continuous/numeric block is
 rejected (D32). D17's base-learner rationale referred to "12 numeric
 features" as a column count, not a semantic characterization; D32 amends that
 characterization without reopening the LightGBM base-learner choice itself.
+This split is authoritative per the publisher's Table 2 and the official
+Criteo benchmark implementation's `cat_features` list, and semantic type is
+never inferred from observed cardinality. It governs estimator-specific
+representation:
+
+- LightGBM-family estimators (Response baseline, T-Learner, X-Learner nuisance
+  and effect models) use LightGBM's native train-fitted categorical
+  representation for the categorical group and plain `float64` for the
+  continuous group -- see [`src/preprocessing.py`](../src/preprocessing.py)'s
+  `LightGBMFeatureTransform` (document 05 / `ADR-base-learner.md`).
+- `econml.grf.CausalForest` has no equivalent native categorical
+  representation. It does not accept the raw categorical token columns
+  directly; an explicit CausalForest-specific encoding is a separate,
+  not-yet-accepted implementation decision (see
+  [ADR-CF-implementation](adr/ADR-CF-implementation.md)).
+- Balance/audit diagnostics (T03) compute standardized mean difference only
+  for the continuous group and a category-distribution diagnostic (total
+  variation distance) only for the categorical group; the two are never
+  combined into one joint statistic, and neither is a P0 causal-validity or
+  correctness gate (D33) -- see `docs/03_assumption_and_audit_spec.md`.
 
 ## Processed-data location and selection
 

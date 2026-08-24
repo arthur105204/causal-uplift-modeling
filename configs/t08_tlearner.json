@@ -66,7 +66,7 @@
     "provides": ["partition_by_arm", "assert_aligned_predictions", "compute_tau", "reconcile_reloaded_tau"]
   },
   "preprocessing": {
-    "transform_fit_scope": "IdentityFeatureTransform fit ONCE on the full/smoke train partition (not per-arm); arm-subsetting happens on the already-transformed X/y/T via boolean masks. No new preprocessing semantics invented."
+    "transform_fit_scope": "LightGBMFeatureTransform (T04 v2, D32) fit ONCE on the full/smoke train partition (not per-arm); arm-subsetting happens on the already-transformed X/y/T via boolean masks. Continuous features (f0/f2/f7/f10) stay float64; categorical features (f1/f3/f4/f5/f6/f8/f9/f11) become the train-fitted pandas categorical representation LightGBM recognizes natively. No new preprocessing semantics invented beyond D32's feature-type correction."
   },
   "scope_guards": {
     "fit_on_validation_or_held_out": false,
@@ -80,5 +80,9 @@
   "lifecycle_state": "T08_SMOKE_IN_PROGRESS",
   "lifecycle_state_evidence": {
     "note": "Updated to T08_SMOKE_ACCEPTED / T08_FULL_ACCEPTED by later turns as evidence is produced; not set here in advance of execution."
+  },
+  "feature_semantics_stale_evidence_notice_D32": {
+    "date": "2026-08-24",
+    "reason": "outputs/runs/t08_smoke_20260818T154813Z_381508, outputs/runs/t08_smoke_audit_erratum_20260818T155806Z_642086, outputs/runs/t08_full_20260818T160333Z_733020, and outputs/runs/t08_full_20260818T160823Z_081282 fit T-Learner's mu0/mu1 LightGBM outcome models against the frozen T04 v1 no-op preprocessing output (all twelve features as plain float64). Per D32, f1/f3/f4/f5/f6/f8/f9/f11 are categorical tokens; that representation is STALE_FEATURE_REPRESENTATION. These immutable run artifacts are not modified or deleted, but cannot authorize a current T08 model and must not be cited as current evidence. tau_hat = mu1_hat - mu0_hat and all T-Learner algebra are unaffected by this notice -- only the base-learner feature representation must be recomputed against T04 v2 (LightGBMFeatureTransform)."
   }
 }

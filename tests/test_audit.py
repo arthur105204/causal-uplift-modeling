@@ -42,7 +42,8 @@ from src.audit import (
     write_t03_csv_new,
     write_t03_json_new,
 )
-from src.data import DataContractError, assert_model_feature_contract
+from src.audit import CALIBRATION_STATUS, categorical_balance_record
+from src.data import CATEGORICAL_FEATURES, CONTINUOUS_FEATURES, DataContractError, assert_model_feature_contract
 
 
 def _frame(rows: int = 20) -> pd.DataFrame:
@@ -377,6 +378,29 @@ def test_folds_are_rebuilt_from_current_assignment_not_stale_labels() -> None:
     assert first["fold_evidence"]["fold_assignment_sha256"] != second["fold_evidence"]["fold_assignment_sha256"]
 
 
+class _DtypeRecordingClassifier(_FixtureClassifier):
+    dtype_records: list[dict] = []
+
+    def fit(self, x: pd.DataFrame, y: np.ndarray) -> "_DtypeRecordingClassifier":
+        type(self).dtype_records.append({column: str(x[column].dtype) for column in x.columns})
+        return super().fit(x, y)
+
+
+def test_cross_fitted_predictability_uses_fold_local_categorical_representation() -> None:
+    """Each fold's category vocabulary is fit on that fold's training side only
+    and applied to its own OOF side -- D32's fold-local leakage boundary."""
+
+    frame = _frame(rows=40)
+    _DtypeRecordingClassifier.dtype_records = []
+    cross_fitted_treatment_predictability(frame, model_factory=_DtypeRecordingClassifier)
+    assert len(_DtypeRecordingClassifier.dtype_records) == 5
+    for record in _DtypeRecordingClassifier.dtype_records:
+        for feature in CATEGORICAL_FEATURES:
+            assert record[feature] == "category"
+        for feature in CONTINUOUS_FEATURES:
+            assert record[feature] == "float64"
+
+
 def test_treatment_metric_formulas_reconcile() -> None:
     frame = _frame(rows=40)
     result = cross_fitted_treatment_predictability(frame, model_factory=_FixtureClassifier)
@@ -408,27 +432,80 @@ def test_smd_uses_treated_minus_control_and_ddof_one() -> None:
 
 def test_max_absolute_smd_excludes_only_global_constants() -> None:
     records, summary = balance_diagnostics(_smd_frame())
-    assert summary["max_feature"] == "f0"
-    assert set(summary["excluded_global_constants"]) == set(FEATURE_COLUMNS) - {"f0"}
+    assert summary["continuous"]["feature"] == "f0"
+    assert set(summary["continuous"]["excluded_global_constants"]) == set(CONTINUOUS_FEATURES) - {"f0"}
     assert records.loc[records["feature"] == "f0", "eligible_for_max_abs_smd"].item()
+
+
+def test_smd_rejects_categorical_feature() -> None:
+    with pytest.raises(AuditContractError, match="continuous"):
+        smd_feature_record(_smd_frame(), "f1")
 
 
 def test_zero_variance_with_different_arm_means_is_invalid() -> None:
     frame = _smd_frame()
-    frame.loc[frame["treatment"] == 0, "f1"] = 0.0
-    frame.loc[frame["treatment"] == 1, "f1"] = 1.0
-    record = smd_feature_record(frame, "f1")
+    frame.loc[frame["treatment"] == 0, "f2"] = 0.0
+    frame.loc[frame["treatment"] == 1, "f2"] = 1.0
+    record = smd_feature_record(frame, "f2")
     assert record["statistic_status"] == "UNDEFINED_ZERO_POOLED_SD"
     assert record["calibration_valid"] is False
 
 
 def test_insufficient_nonmissing_support_is_invalid() -> None:
     frame = _smd_frame()
-    frame.loc[frame["treatment"] == 1, "f1"] = np.nan
-    frame.loc[frame.index[-1], "f1"] = 1.0
-    record = smd_feature_record(frame, "f1")
+    frame.loc[frame["treatment"] == 1, "f2"] = np.nan
+    frame.loc[frame.index[-1], "f2"] = 1.0
+    record = smd_feature_record(frame, "f2")
     assert record["statistic_status"] == "UNDEFINED_INSUFFICIENT_NONMISSING_SUPPORT"
     assert record["smd_signed"] is None
+
+
+# --- Categorical balance diagnostics (D32) -----------------------------------
+
+def test_categorical_balance_record_rejects_continuous_feature() -> None:
+    with pytest.raises(AuditContractError, match="categorical"):
+        categorical_balance_record(_smd_frame(), "f0")
+
+
+def test_categorical_balance_record_computes_tvd() -> None:
+    frame = _frame(rows=8)
+    frame["treatment"] = [0, 0, 0, 0, 1, 1, 1, 1]
+    frame["f1"] = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]  # fully separated by arm
+    record = categorical_balance_record(frame, "f1")
+    assert record["feature_type"] == "categorical"
+    assert record["category_count"] == 2
+    assert record["total_variation_distance"] == pytest.approx(1.0)
+    assert record["max_category_proportion_gap"] == pytest.approx(1.0)
+    assert record["control_missing_n"] == 0
+    assert record["treated_missing_n"] == 0
+
+
+def test_categorical_balance_record_reports_missing_by_arm() -> None:
+    frame = _frame(rows=8)
+    frame["treatment"] = [0, 0, 0, 0, 1, 1, 1, 1]
+    frame["f1"] = [0.0, 0.0, np.nan, 0.0, 1.0, np.nan, 1.0, 1.0]
+    record = categorical_balance_record(frame, "f1")
+    assert record["control_missing_n"] == 1
+    assert record["treated_missing_n"] == 1
+
+
+def test_balance_diagnostics_separates_continuous_and_categorical_families() -> None:
+    records, summary = balance_diagnostics(_smd_frame())
+    assert set(summary.keys()) == {"continuous", "categorical", "joint_calibration"}
+    assert summary["continuous"]["metric"] == "max_absolute_smd"
+    assert summary["categorical"]["metric"] == "max_total_variation_distance"
+    assert set(summary["categorical"]["features"]) == set(CATEGORICAL_FEATURES)
+    assert set(records.loc[records["feature_type"] == "continuous", "feature"]) == set(CONTINUOUS_FEATURES)
+    assert set(records.loc[records["feature_type"] == "categorical", "feature"]) == set(CATEGORICAL_FEATURES)
+
+
+def test_balance_diagnostics_does_not_fabricate_a_joint_threshold() -> None:
+    _, summary = balance_diagnostics(_smd_frame())
+    joint = summary["joint_calibration"]
+    assert joint["action_rule"] is None
+    assert joint["threshold_source"] is None
+    assert joint["status"] == CALIBRATION_STATUS
+    assert "REOPENED" in CALIBRATION_STATUS or "BLOCKED" in CALIBRATION_STATUS
 
 
 def test_inverse_ecdf_percentile_ranks_and_no_interpolation() -> None:

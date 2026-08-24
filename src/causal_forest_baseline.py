@@ -22,7 +22,13 @@ from dataclasses import dataclass
 import numpy as np
 from econml.grf import CausalForest
 
+from src.data import CATEGORICAL_FEATURES, DataContractError
+
 FROZEN_ECONML_VERSION = "0.17.0"
+
+
+class CausalForestRepresentationError(DataContractError):
+    """Raised when fit_causal_forest() receives raw, unencoded categorical tokens."""
 
 # Every value left at econml's own library default except where this project's
 # reproducibility contract forces it (random_state is set per call; n_jobs=1
@@ -58,6 +64,35 @@ FROZEN_CAUSAL_FOREST_CONFIG: dict[str, object] = {
 }
 
 
+def _reject_raw_categorical_columns(X) -> None:
+    """Fail closed on raw, unencoded CRITEO categorical token columns.
+
+    econml.grf.CausalForest has no native categorical-feature representation
+    equivalent to LightGBM's train-fitted category dtype (D32). f1/f3/f4/f5/
+    f6/f8/f9/f11 are anonymized categorical tokens, not ordered continuous
+    quantities -- passing them through as raw float64 columns silently
+    reintroduces the same bug D32 fixes for LightGBM. This project does not
+    pick an encoding (ordinal/one-hot/hashing/target-encoding/etc.) here:
+    that choice is deferred to a dedicated CausalForest representation ADR
+    (docs/adr/ADR-CF-implementation.md). Callers passing an already-encoded
+    generic numeric matrix (no column named after a raw categorical feature)
+    are unaffected.
+    """
+
+    if not hasattr(X, "columns"):
+        return
+    raw_categorical_present = sorted(set(X.columns) & set(CATEGORICAL_FEATURES))
+    if raw_categorical_present:
+        raise CausalForestRepresentationError(
+            "fit_causal_forest() received raw, unencoded CRITEO categorical token "
+            f"column(s) {raw_categorical_present}. These are categorical tokens, not "
+            "ordered continuous quantities, and econml.grf.CausalForest has no native "
+            "categorical representation to fall back on. An explicit, separately-decided "
+            "CausalForest encoding is required (see docs/adr/ADR-CF-implementation.md) -- "
+            "this function refuses to guess one."
+        )
+
+
 def config_hash(config: dict[str, object] | None = None) -> str:
     """Deterministic sha256 of the frozen config, same convention as
     src/lightgbm_baseline.py's config_hash()."""
@@ -83,6 +118,8 @@ def fit_causal_forest(
 ) -> FittedCausalForest:
     """Fit one econml.grf.CausalForest. T is passed as its own argument --
     never concatenated into X. T must be a single binary column."""
+
+    _reject_raw_categorical_columns(X)
 
     effective_config = dict(config if config is not None else FROZEN_CAUSAL_FOREST_CONFIG)
     effective_config["random_state"] = seed

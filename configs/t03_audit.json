@@ -148,6 +148,19 @@
     "execution_state": "DEFERRED_T03_C",
     "evidence_status": null,
     "required_action": null,
+    "feature_semantics_status": "REOPENED_PENDING_MIXED_TYPE_SPEC",
+    "feature_semantics_reopening_event": {
+      "date": "2026-08-24",
+      "decision": "D32",
+      "reason": "The prior declared balance.omnibus ('max_absolute_eligible_feature_smd over all f0-f11') treated all twelve features, including the eight publisher-defined categorical tokens (f1/f3/f4/f5/f6/f8/f9/f11), as continuous quantities eligible for SMD. This is superseded, not silently reused: SMD is defined only for the four continuous features (f0/f2/f7/f10); the eight categorical features get a category-distribution diagnostic (total variation distance) instead. No execution occurred under the old single-omnibus design (execution_state was already DEFERRED_T03_C), so there is no stale run to mark -- this reopening amends the not-yet-executed algorithm contract itself, in place of the superseded 'balance.omnibus' field below.",
+      "generic_mechanisms_unaffected": [
+        "conditional_permute_treatment / deterministic seed derivation",
+        "fold assignment mechanics (build_treatment_stratified_folds)",
+        "empirical_order_statistic / Monte Carlo interval mechanics",
+        "empirical_tail_fraction",
+        "diagnostic_action (generic threshold-banding primitive)"
+      ]
+    },
     "master_seed": 42,
     "seed_derivation": "numpy-seedsequence-pcg64-spawn-key-v1",
     "replication_index_origin": 0,
@@ -199,15 +212,33 @@
       "tuning": false,
       "early_stopping": false,
       "eval_set": false,
-      "class_weighting": false
+      "class_weighting": false,
+      "feature_representation": "fold-local LightGBMFeatureTransform (D32): categorical vocabulary fit on each fold's training side only, applied to that fold's OOF validation side; f0/f2/f7/f10 stay float64"
     },
     "balance": {
-      "formula": "(mean_treated-mean_control)/sqrt((var_treated_ddof1+var_control_ddof1)/2)",
-      "variance_weighting": "equal_arm",
-      "sign": "treated_minus_control",
-      "imputation": "none",
-      "omnibus": "max_absolute_eligible_feature_smd",
-      "abs_smd_0_10": "LITERATURE_REFERENCE_NOT_GATE"
+      "continuous": {
+        "features": ["f0", "f2", "f7", "f10"],
+        "formula": "(mean_treated-mean_control)/sqrt((var_treated_ddof1+var_control_ddof1)/2)",
+        "variance_weighting": "equal_arm",
+        "sign": "treated_minus_control",
+        "imputation": "none",
+        "omnibus": "max_absolute_smd",
+        "abs_smd_0_10": "LITERATURE_REFERENCE_NOT_GATE"
+      },
+      "categorical": {
+        "features": ["f1", "f3", "f4", "f5", "f6", "f8", "f9", "f11"],
+        "formula": "TVD = 0.5 * sum_c |P(X=c|T=1) - P(X=c|T=0)|",
+        "imputation": "none_missing_reported_separately_by_arm",
+        "omnibus": "max_total_variation_distance"
+      },
+      "joint_omnibus": null,
+      "joint_omnibus_status": "BLOCKED_PENDING_MIXED_TYPE_SPEC",
+      "joint_omnibus_rule": "continuous max-SMD and categorical max-TVD are never combined via max() or any other joint statistic; they are different quantities on different scales (D32). A joint disposition/action rule is unspecified and must not be invented.",
+      "superseded_field": {
+        "field": "balance.omnibus",
+        "old_value": "max_absolute_eligible_feature_smd (computed over all twelve f0-f11 features)",
+        "superseded_by": "D32 (2026-08-24): split into balance.continuous.omnibus (max_absolute_smd, four continuous features only) and balance.categorical.omnibus (max_total_variation_distance, eight categorical features only)."
+      }
     },
     "percentiles": {
       "definition": "z_(ceil(B*p))",

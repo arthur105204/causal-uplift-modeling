@@ -107,7 +107,7 @@
     "note": "T09 adds fit_regressor/predict_values/FROZEN_REGRESSION_CONFIG/EFFECT_NUM_BOOST_ROUND alongside the unchanged T07/T08 binary path; the binary path's config/hash/behavior is asserted unchanged by tests/test_lightgbm_baseline.py::test_binary_config_and_hash_unchanged_by_regression_addition."
   },
   "preprocessing": {
-    "transform_fit_scope": "IdentityFeatureTransform fit ONCE on the full/smoke train partition (not per-fold, not per-arm); fold- and arm-subsetting happen on the already-transformed X/y/T via boolean masks. No new preprocessing semantics invented."
+    "transform_fit_scope": "LightGBMFeatureTransform (T04 v2, D32) fit ONCE on the full/smoke train partition (not per-fold, not per-arm); fold- and arm-subsetting happen on the already-transformed X/y/T via boolean masks. Continuous features (f0/f2/f7/f10) stay float64; categorical features (f1/f3/f4/f5/f6/f8/f9/f11) become the train-fitted pandas categorical representation LightGBM recognizes natively. No new preprocessing semantics invented beyond D32's feature-type correction; OOF cross-fitting's leakage boundary is unchanged by this substitution -- the transform is fit once on the full train partition, before fold/arm subsetting, exactly as v1 was."
   },
   "scope_guards": {
     "fit_on_validation_or_held_out": false,
@@ -143,5 +143,9 @@
     "note": "Updated to T09_SMOKE_ACCEPTED / T09_FULL_ACCEPTED by later turns as evidence is produced; not set here in advance of execution.",
     "smoke_run_id_original": "t09_smoke_20260819T032427Z_083588",
     "smoke_run_id_artifact_path_corrected": "t09_smoke_20260819T034244Z_369573"
+  },
+  "feature_semantics_stale_evidence_notice_D32": {
+    "date": "2026-08-24",
+    "reason": "Every existing T09 run under outputs/runs/ (both SMOKE runs above, and the FULL runs t09_full_seed42_20260819T040358Z_050552, t09_full_seed42_20260819T041828Z_831364, t09_full_seed123_20260819T040825Z_847469, t09_full_seed123_20260819T042330Z_632997, t09_full_seed2026_20260819T042825Z_929867, t09_full_seed_summary_20260819T043346Z_178791, and the t09_full_validation_selection_* runs) fit X-Learner's nuisance/effect LightGBM stages against the frozen T04 v1 no-op preprocessing output (all twelve features as plain float64). Per D32, f1/f3/f4/f5/f6/f8/f9/f11 are categorical tokens; that representation is STALE_FEATURE_REPRESENTATION. These immutable run artifacts are not modified or deleted, but cannot authorize a current T09 model and must not be cited as current evidence. D1=Y-mu0_oof, D0=mu1_oof-Y, the OOF/cross-fitting leakage boundary, and the final combination rule are all unaffected by this notice -- only the nuisance/effect base-learner feature representation must be recomputed against T04 v2 (LightGBMFeatureTransform) across all three model seeds."
   }
 }

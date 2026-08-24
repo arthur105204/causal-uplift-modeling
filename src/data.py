@@ -28,6 +28,34 @@ import pyarrow.parquet as pq
 
 
 FEATURE_COLUMNS = tuple(f"f{i}" for i in range(12))
+CONTINUOUS_FEATURES = (
+    "f0",
+    "f2",
+    "f7",
+    "f10",
+)
+
+CATEGORICAL_FEATURES = (
+    "f1",
+    "f3",
+    "f4",
+    "f5",
+    "f6",
+    "f8",
+    "f9",
+    "f11",
+)
+
+FEATURE_SEMANTICS = {
+    **{feature: "continuous" for feature in CONTINUOUS_FEATURES},
+    **{feature: "categorical" for feature in CATEGORICAL_FEATURES},
+}
+
+if set(CONTINUOUS_FEATURES) & set(CATEGORICAL_FEATURES):
+    raise RuntimeError("Feature semantic groups overlap")
+
+if set(CONTINUOUS_FEATURES) | set(CATEGORICAL_FEATURES) != set(FEATURE_COLUMNS):
+    raise RuntimeError("Feature semantic groups do not cover FEATURE_COLUMNS")
 TREATMENT_COLUMN = "treatment"
 PRIMARY_OUTCOME = "conversion"
 SECONDARY_OUTCOME = "visit"
