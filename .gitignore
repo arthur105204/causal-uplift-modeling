@@ -56,6 +56,9 @@ secrets*.json
 /checkpoints/
 *.ckpt
 
+# Local offline dependency wheels (Kaggle staging)
+kaggle_dependencies/
+
 # Logs and temporary files
 *.log
 *.tmp
