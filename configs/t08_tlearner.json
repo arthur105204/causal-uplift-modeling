@@ -77,9 +77,20 @@
     "create_estimator_framework_or_registry": false,
     "create_internal_t08_notebook": false
   },
-  "lifecycle_state": "T08_SMOKE_IN_PROGRESS",
+  "lifecycle_state": "T08_SMOKE_ACCEPTED_FULL_RUN_PENDING",
   "lifecycle_state_evidence": {
-    "note": "Updated to T08_SMOKE_ACCEPTED / T08_FULL_ACCEPTED by later turns as evidence is produced; not set here in advance of execution."
+    "smoke_run_id": "t08_smoke_20260824T082548Z_476009",
+    "smoke_run_manifest": "outputs/runs/t08_smoke_20260824T082548Z_476009/audit/artifact_manifest.json",
+    "authorizing_t04_run_id": "t04_preprocessing_20260824T073606Z_080516",
+    "authorizing_t07_run_id": "t07_full_20260824T074925Z_281558",
+    "representation": "T04-v2 LightGBMFeatureTransform (D32): f0/f2/f7/f10 float64, f1/f3/f4/f5/f6/f8/f9/f11 train-fitted pandas categorical",
+    "arm_partition_dtype_repair": "Correctness fix (kaggle/02_uplift_modeling.ipynb cells 55 and 79): partition_by_arm(t, X.to_numpy()) followed by pd.DataFrame(...) reconstruction silently dropped the pandas categorical dtype on the eight categorical features, which would have failed src.lightgbm_baseline's own categorical-representation guard at fit time (same bug class as the X-Learner fold-local fix, never previously applied to T08). Fixed by partitioning X via direct boolean-mask DataFrame indexing instead, preserving dtypes; only the plain-numeric y arrays still go through partition_by_arm. Verified by T08 SMOKE's successful mu1/mu0 fit and reload checks below.",
+    "smoke_row_counts": {"train": 164706, "validation": 35294},
+    "smoke_reload_verification": "all checks True (see outputs/runs/t08_smoke_20260824T082548Z_476009/tables and audit/)",
+    "held_out_accessed": false,
+    "full_run_status": "FULL_RUN_PENDING",
+    "full_run_pending_reason": "T08 FULL (mu1 fit on 8,317,858 treated rows, mu0 on 1,467,856 control rows) was attempted 6 times locally (kaggle/02_uplift_modeling.ipynb, RUN_T08_FULL_STAGE=True pass, isolated from T08 SMOKE in its own process) and failed 6 consecutive times with an external 'killed' termination (no Python traceback) at the identical point -- immediately at the start of the mu1 lgb.train() call -- despite retrying with better measured free memory (3.7-6.5GB across attempts) and with OMP_NUM_THREADS=4 to reduce LightGBM's per-thread histogram memory footprint (no effect). This is a reproducible local resource constraint on this specific development machine (shared with the user's own editor/browser and other concurrent Claude Code sessions), not a correctness defect: T08 SMOKE (same corrected code path, same D32 representation, same categorical dtype fix) completed and verified successfully at 200K-row scale, and T07 FULL succeeded at a comparable full-population scale (9,785,714 rows) earlier in this same session. The prepared, corrected notebook state (kaggle/02_uplift_modeling.ipynb, RUN_T08_FULL_STAGE=True at cell 74) is ready to execute; it only needs to be run somewhere with sufficient available memory (a quieter session on this machine, or Kaggle/another host) to produce the accepted FULL run_id.",
+    "note": "Do not fabricate a T08 FULL run_id. The pre-D32 FULL evidence cited under feature_semantics_stale_evidence_notice_D32 below remains STALE_FEATURE_REPRESENTATION and is not current T08 evidence; it is only still referenced by cell 74's reuse branch for internal hash self-consistency until a corrected FULL run completes."
   },
   "feature_semantics_stale_evidence_notice_D32": {
     "date": "2026-08-24",

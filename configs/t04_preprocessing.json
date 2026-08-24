@@ -38,14 +38,22 @@
     "train_models": false,
     "add_feature_engineering_for_tidiness": false
   },
-  "lifecycle_state": "T04_REOPENED_FEATURE_SEMANTICS",
+  "lifecycle_state": "T04_ACCEPTED",
+  "lifecycle_state_evidence": {
+    "authorizing_run_id": "t04_preprocessing_20260824T073606Z_080516",
+    "authorizing_run_manifest": "outputs/runs/t04_preprocessing_20260824T073606Z_080516/audit/artifact_manifest.json",
+    "contract_sha256": "1f9ed3a521244a81f73f5b7c3ad0e9f82b974edaeb019b9f2db0d4300e77009d",
+    "checklist_verified": "fit boundary train-only (train_frame alone passed to fit()); continuous f0/f2/f7/f10 verified float64 on train+validation; categorical f1/f3/f4/f5/f6/f8/f9/f11 verified pandas-categorical with the identical train-fitted vocabulary reused on validation (no independent refit); column order preserved (FEATURE_COLUMNS); row alignment preserved via shared pandas index between output and source frame (_source_row_id never enters X, per D07/D32 forbidden-model-column rule); determinism verified (repeat transform of train_frame bit-identical); row counts train=9,785,714, validation=2,096,938 (matches T05_SPLIT_ACCEPTED); train_missing_values=0; validation_missing_values=322, exactly accounted for by unseen-category-to-missing mapping (unseen_validation_category_counts sums to 322: f1=1, f3=20, f4=23, f5=7, f6=55, f8=137, f9=67, f11=12); held_out_accessed=false; fit_on_validation_or_held_out=false",
+    "row_counts": {"train": 9785714, "validation": 2096938},
+    "note": "T04-v2 (LightGBMFeatureTransform, D32 categorical-aware contract) executed against the full frozen train/validation development population via notebooks/internal/t04_preprocessing.ipynb, updated from the superseded v1 IdentityFeatureTransform import/logic to the current src/preprocessing.LightGBMFeatureTransform contract. Supersedes T04_REOPENED_FEATURE_SEMANTICS. Any T07/T08/T09 development result that consumed v1's no-op output remains STALE_FEATURE_REPRESENTATION; this run is the current authorizing T04 evidence for corrected T07/T08/T09 reruns."
+  },
   "reopening_event": {
     "date": "2026-08-24",
     "decision": "D32",
     "reason": "v1's IdentityFeatureTransform treated all twelve features as generic no-op float64 columns for every consumer. This is incorrect: eight of the twelve are semantically categorical per the publisher and the official Criteo benchmark, not continuous quantities. v1 is superseded, not deleted -- its evidence remains a valid historical record of the (incorrectly-scoped) no-op transform's own internal correctness.",
     "supersedes_contract_version": "t04-preprocessing-v1",
-    "new_authorizing_run_id": null,
-    "note": "No new governed run has been executed under contract v2 as part of this fix. v1's T04_ACCEPTED evidence below cannot authorize v2 and cannot be reused to skip a v2 acceptance run. Any T07/T08/T09 development result that consumed v1's no-op output is STALE_FEATURE_REPRESENTATION and requires a corrected rerun under v2 before reuse."
+    "new_authorizing_run_id": "t04_preprocessing_20260824T073606Z_080516",
+    "note": "Governed T04-v2 run t04_preprocessing_20260824T073606Z_080516 (see lifecycle_state_evidence above) authorizes contract v2. v1's T04_ACCEPTED evidence below did not and could not authorize v2. Any T07/T08/T09 development result that consumed v1's no-op output is STALE_FEATURE_REPRESENTATION and requires a corrected rerun under v2 before reuse."
   },
   "superseded_v1_record": {
     "lifecycle_state": "T04_ACCEPTED",

@@ -143,11 +143,47 @@
     "no_favorable_seed_selection": "All three seeds' results are reported; none is selected or omitted based on outcome, per docs/06_experiment_protocol.md Stage 3.",
     "open_question": "Whether the 123/2026 robustness passes are part of this task's own FULL promotion or a later, separate cross-comparator Stage-3 activity is not resolved from docs/05 and docs/06 alone -- confirm against Issue #10/MASTER before executing any of the three FULL runs."
   },
-  "lifecycle_state": "T09_SMOKE_IN_PROGRESS",
+  "lifecycle_state": "T09_FULL_ACCEPTED_SEED42_PRIMARY_SEED123_2026_NON_BLOCKING_PENDING",
   "lifecycle_state_evidence": {
-    "note": "Updated to T09_SMOKE_ACCEPTED / T09_FULL_ACCEPTED by later turns as evidence is produced; not set here in advance of execution.",
-    "smoke_run_id_original": "t09_smoke_20260819T032427Z_083588",
-    "smoke_run_id_artifact_path_corrected": "t09_smoke_20260819T034244Z_369573"
+    "smoke_run_id": "t09_smoke_20260824T084356Z_934355",
+    "smoke_run_manifest": "outputs/runs/t09_smoke_20260824T084356Z_934355/audit/artifact_manifest.json",
+    "authorizing_t04_run_id": "t04_preprocessing_20260824T073606Z_080516",
+    "authorizing_t07_run_id": "t07_full_20260824T074925Z_281558",
+    "authorizing_t08_note": "T08 FULL corrected evidence is FULL_RUN_PENDING (see configs/t08_tlearner.json); T09 SMOKE's own hash-verification of t08_full still matched the pre-D32 t08_full evidence self-consistently (matches=true) since it was not asked to verify against a corrected T08 FULL run that does not yet exist -- T09's own estimator does not depend on T08's model at all, only cites it for comparison-table lineage.",
+    "representation": "T04-v2 LightGBMFeatureTransform (D32), fold-local fit per src.preprocessing per the correctness repair already committed at 50fbdac (kaggle/02_uplift_modeling.ipynb T09 SMOKE section)",
+    "row_counts": {"smoke_total": 200000, "smoke_train": 164706, "smoke_validation": 35294, "fold_a": 82353, "fold_b": 82353},
+    "oof_coverage": "100% (all_partition_ty_cells_nonempty=true; fold_a_count+fold_b_count=smoke_train_count)",
+    "nuisance_config_hash": "647b625dca13ea63f61a8ded8ce97c5e4250beea1d09cc6fa1e3ef3bbb6eaf30",
+    "regression_config_hash": "e033650a3d185c6e0b917e371a9f6661ee203846af2843eabe8d7f3aaf59a80b",
+    "g_value": 0.8499993928575765,
+    "d1_range": [-0.9999940418430113, 1.0],
+    "d0_range": [-0.9999634018644947, 0.9993029111193255],
+    "tau_hat_range": [-0.3621164895899631, 0.4214019015824265],
+    "reload_verification": "all checks True (config_hash, regression_config_hash, oof/tau1/tau0/tau_hat reload tolerance, row identity)",
+    "held_out_accessed": false,
+    "note": "Corrected D32 rerun (fold-local categorical transform fix per docs above) executed locally, superseding the SUPERSEDED_v1 STALE_FEATURE_REPRESENTATION SMOKE runs below as current T09 SMOKE evidence."
+  },
+  "full_run_evidence": {
+    "seed_42": {
+      "run_id": "t09_full_seed42_20260824T084833Z_127693",
+      "run_manifest": "outputs/runs/t09_full_seed42_20260824T084833Z_127693/audit/artifact_manifest.json",
+      "seed_role": "primary reported result (D33/D29 required)",
+      "status": "COMPLETED_T09_FULL_VERIFIED",
+      "row_counts": {"train": 9785714, "validation": 2096938, "fold_a": 4892857, "fold_b": 4892857},
+      "oof_coverage": "9,785,714 rows, 100% coverage, 0% same-fold leakage",
+      "nuisance_config_hash": "647b625dca13ea63f61a8ded8ce97c5e4250beea1d09cc6fa1e3ef3bbb6eaf30",
+      "regression_config_hash": "e033650a3d185c6e0b917e371a9f6661ee203846af2843eabe8d7f3aaf59a80b",
+      "nuisance_best_iterations": {"mu0_A": 26, "mu1_A": 42, "mu0_B": 21, "mu1_B": 39},
+      "g_full": 0.8500001124087624,
+      "tau_hat_range": [-0.5215357939441435, 0.7587719847293969],
+      "xlearner_ranking_full": {"qini_area": 1344.837677249076, "qini_above_random": 320.1690712485863},
+      "reload_verification": "all checks True (config_hash, regression_config_hash, oof/tau1/tau0/tau_hat reload tolerance, row identity)",
+      "upstream_reuse_hash_verification": "t07_full=true, t08_full=true (self-consistent against pending-FULL_RUN_PENDING pre-D32 t08_full evidence), t09_smoke=true",
+      "resource_evidence": {"wall_seconds": 326.34, "oom_or_termination_observed": false},
+      "held_out_accessed": false
+    },
+    "seed_123": {"status": "NOT_EXECUTED", "reason": "Non-blocking per D33/D29 amendment; primary seed 42 is the required and sole precondition for T09 acceptance. Deferred, not a gap in this task's scope."},
+    "seed_2026": {"status": "NOT_EXECUTED", "reason": "Non-blocking per D33/D29 amendment; primary seed 42 is the required and sole precondition for T09 acceptance. Deferred, not a gap in this task's scope."}
   },
   "feature_semantics_stale_evidence_notice_D32": {
     "date": "2026-08-24",

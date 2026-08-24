@@ -58,12 +58,23 @@
     "create_scale_rungs_module": false,
     "create_internal_t07_notebook": false
   },
-  "lifecycle_state": "T07_SMOKE_IN_PROGRESS",
+  "lifecycle_state": "T07_FULL_ACCEPTED",
   "lifecycle_state_evidence": {
-    "note": "Updated to T07_SMOKE_ACCEPTED / T07_FULL_ACCEPTED by later turns as evidence is produced; not set here in advance of execution."
+    "smoke_run_id": "t07_smoke_20260824T074744Z_004870",
+    "full_run_id": "t07_full_20260824T074925Z_281558",
+    "full_run_manifest": "outputs/runs/t07_full_20260824T074925Z_281558/audit/artifact_manifest.json",
+    "authorizing_t04_run_id": "t04_preprocessing_20260824T073606Z_080516",
+    "representation": "T04-v2 LightGBMFeatureTransform (D32): f0/f2/f7/f10 float64, f1/f3/f4/f5/f6/f8/f9/f11 train-fitted pandas categorical, categorical_feature declared to LightGBM",
+    "row_counts": {"train": 9785714, "validation": 2096938},
+    "best_iteration": 1,
+    "lightgbm_config_hash": "647b625dca13ea63f61a8ded8ce97c5e4250beea1d09cc6fa1e3ef3bbb6eaf30",
+    "diagnostics": {"roc_auc": 0.9209852444047905, "average_precision": 0.16844851902176605, "log_loss": 0.019717748546194847},
+    "reload_verification": {"config_hash_matches": true, "prediction_reload_matches_within_tolerance": true, "row_identity_matches": true, "random_scores_exact_match": true, "random_reference_200_draws_self_consistent": true},
+    "held_out_accessed": false,
+    "note": "Corrected D32 rerun executed locally (notebook kaggle/02_uplift_modeling.ipynb, RUN_T07_STAGE=True pass) against the T04-v2 categorical-aware representation. Supersedes the STALE_FEATURE_REPRESENTATION evidence below as current T07 evidence."
   },
   "feature_semantics_stale_evidence_notice_D32": {
     "date": "2026-08-24",
-    "reason": "outputs/runs/t07_smoke_20260818T105801Z_862229, outputs/runs/t07_smoke_20260818T111252Z_867633, outputs/runs/t07_full_20260818T111446Z_593205, and outputs/runs/t07_audit_erratum_20260818T150917Z_995999 fit the Response LightGBM classifier against the frozen T04 v1 no-op preprocessing output (all twelve features as plain float64, no categorical_feature declared to LightGBM). Per D32, f1/f3/f4/f5/f6/f8/f9/f11 are categorical tokens; that representation is STALE_FEATURE_REPRESENTATION. These immutable run artifacts are not modified or deleted, but they cannot authorize a current T07 model and must not be cited as current evidence. A corrected development rerun against LightGBMFeatureTransform (T04 v2) is required before any current T07 claim."
+    "reason": "outputs/runs/t07_smoke_20260818T105801Z_862229, outputs/runs/t07_smoke_20260818T111252Z_867633, outputs/runs/t07_full_20260818T111446Z_593205, and outputs/runs/t07_audit_erratum_20260818T150917Z_995999 fit the Response LightGBM classifier against the frozen T04 v1 no-op preprocessing output (all twelve features as plain float64, no categorical_feature declared to LightGBM). Per D32, f1/f3/f4/f5/f6/f8/f9/f11 are categorical tokens; that representation is STALE_FEATURE_REPRESENTATION. These immutable run artifacts are not modified or deleted, but they cannot authorize a current T07 model and must not be cited as current evidence. The corrected development rerun (see lifecycle_state_evidence above, run_id t07_full_20260824T074925Z_281558) supersedes them as current T07 evidence."
   }
 }
