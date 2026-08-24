@@ -16,7 +16,7 @@
       "docs/adr/ADR-CF-implementation.md",
       "docs/adr/ADR-CF-bridge.md"
     ],
-    "governing_decisions": ["D10", "D15", "D22", "D23 (superseded by D30 2026-08-18)", "D30", "D31 (locked -- one-shot CF compute policy: T11 scope, 500K seed-robustness, Stage-4 CF exception)"]
+    "governing_decisions": ["D10", "D15", "D22", "D23 (superseded by D30 2026-08-18)", "D30", "D31 (locked -- one-shot CF compute policy: T11 scope, 500K seed-robustness, Stage-4 CF exception)", "D34 (locked -- CausalForest categorical representation: frequency-capped top-K + OTHER one-hot, K ladder 32 -> 16 -> 8, resource-only selection)"]
   },
   "decision_record": {
     "question": "Which Python Causal Forest implementation, exact config, and D30 scale plan satisfy ADR-CF-implementation's selection criteria, for T10's local preflight + Kaggle SMOKE/RESOURCE verification (no held-out, no validation, no real-data SMOKE executed yet)?",
@@ -112,9 +112,10 @@
     "resource_status": "RESOURCE executed once: run_id t10_resource_20260819T093301Z_574711. Fit and predict on the complete 2,000,000-row cohort succeeded; hard correctness (alpha/jac/tau finite) held. Retained as correctness/resource evidence -- see decision_record.final_disposition_locked_D31. NO rerun performed or authorized. The RESOURCE stage is closed for T10's purposes."
   },
   "execution_environment": {
-    "smoke_resource_benchmark_authoritative_environment": "LOCAL (owner directive, superseding the earlier Kaggle-authoritative directive and the stale wording still present in GitHub Issue #11, which this repository has no tool access to edit directly -- flagged for a minimal manual Issue amendment, not blocking execution).",
-    "local_environment_scope": "authoritative for T10 SMOKE and RESOURCE execution as of this config version -- src/causal_forest_baseline.py, tests/test_causal_forest_baseline.py, and both real-data governed runs (t10_smoke_20260819T091713Z_996970 and the RESOURCE run this version authorizes).",
-    "audit_environment_json_must_record": "actual local machine hardware/package specs at SMOKE/RESOURCE execution time (already done for the accepted SMOKE run)."
+    "smoke_resource_benchmark_authoritative_environment": "KAGGLE (owner directive, 2026-08-24, superseding the prior LOCAL-authoritative override below for the D34 RESOURCE K-ladder specifically). Local remains authoritative for development, unit tests, and the tiny synthetic-fixture SMOKE exercised by tests/test_causal_forest_runner.py -- never for a real 2,000,000-row (or larger) fit.",
+    "d34_resource_k_ladder_environment": "KAGGLE -- notebooks/internal/t10_causal_forest_resource.ipynb (K=32; separate future notebook/run_id for K=16/K=8 only if K=32's resource_gate_verdict fails). This notebook calls the identical src.causal_forest_baseline/src.causal_forest_runner code path scripts/t11_run_stage.py's CLI form also exercises -- no separate Kaggle-only implementation exists.",
+    "pre_d34_local_environment_scope_HISTORICAL": "SUPERSEDED for the D34 RESOURCE gate, retained as historical record: LOCAL was authoritative for the pre-D32 T10 SMOKE/RESOURCE runs (owner directive, superseding the earlier Kaggle-authoritative directive and the stale wording still present in GitHub Issue #11, which this repository has no tool access to edit directly -- flagged for a minimal manual Issue amendment, not blocking execution). Those runs -- src/causal_forest_baseline.py, tests/test_causal_forest_baseline.py, t10_smoke_20260819T091713Z_996970, t10_resource_20260819T093301Z_574711 -- are STALE_FEATURE_REPRESENTATION per the D32 reopening event below and are not reused to authorize the D34 K-ladder gate.",
+    "audit_environment_json_must_record": "actual execution-machine (Kaggle session) hardware/package specs at RESOURCE execution time, exactly as already done for the accepted pre-D32 local SMOKE run."
   },
   "seed_robustness_plan_D31": {
     "status": "PLANNED, NOT YET EXECUTED as of this config version",
@@ -149,7 +150,41 @@
     "start_t11_implementation": false,
     "commit_or_push": false
   },
-  "lifecycle_state": "T10_BLOCKED_PENDING_FEATURE_REPRESENTATION",
+  "categorical_representation_D34": {
+    "status": "SELECTED_PENDING_RESOURCE_GATE",
+    "decision_record": "docs/decision_register.csv D34; docs/adr/ADR-CF-implementation.md Feature-representation status",
+    "encoder": "src.causal_forest_baseline.CausalForestCategoricalEncoder",
+    "encoding": "frequency-capped top-K + explicit OTHER one-hot, TRAIN-only fit and frozen, reused unchanged on validation/held-out",
+    "k_ladder": [32, 16, 8],
+    "k_selection_rule": "largest K in k_ladder whose RESOURCE-gate attempt passes; K=32 attempted first, K=16/K=8 only after a recorded prior failure; never selected by Qini/AUUC/uplift/conversion/model-performance metrics or by OTHER-bucket mass",
+    "k_ladder_stop_rule": "if K=8 fails the RESOURCE gate, STOP for owner scope review -- no fourth rung, no substitute encoding",
+    "tie_break_rule": "category selection ranked by (TRAIN frequency count DESC, category value ASC); frozen K sorted ascending by value for column order",
+    "missing_value_policy": "FAIL CLOSED -- CausalForestCategoricalEncoder.fit()/transform() raise CausalForestEncodingError on any NaN in a categorical feature; no MISSING bucket, no routing to OTHER (owner decision 2026-08-24)",
+    "resource_gate_population": "the already-predeclared T10 RESOURCE cohort (resource_gate_size below, 2,000,000 rows) -- no new population size introduced",
+    "resource_gate_pass_criteria": {
+      "peak_memory": "PROJECTED_FULL peak_rss_bytes <= 80% of an assumed 30 GB Kaggle CPU RAM environment (24,000,000,000 bytes)",
+      "wall_clock": "PROJECTED_FULL total_projected_wall_seconds <= 10 hours (36,000 seconds)",
+      "correctness": "all existing hard-correctness gates (alpha/jac/tau finite) and the serialized-model reload-equality check must pass",
+      "swap_instability": "no swap-usage growth above baseline during the run",
+      "never_gated_on": ["other_bucket_mass_by_feature", "qini", "auuc", "conversion_rate", "uplift_metric"]
+    },
+    "measured_vs_projected": "src.causal_forest_runner.project_full_scale_resource()/resource_gate_pass_fail() keep MEASURED_RESOURCE (this run's actual figures) and PROJECTED_FULL (conservative linear row-count-ratio extrapolation to the 9,785,714-row FULL scale) explicitly separate in resource_evidence.json",
+    "not_yet_executed": "no RESOURCE-gate attempt at any K has been run as of this config version -- see execution_environment/scope_guards below",
+    "resource_k32_kaggle_invocation": {
+      "status": "PREPARED_NOT_EXECUTED",
+      "notebook": "notebooks/internal/t10_causal_forest_resource.ipynb",
+      "equivalent_cli": "scripts/t11_run_stage.py --stage resource --categorical-k 32 --population-size 2000000 --sampling-seed 42 --model-seed 42 --diagnostic-sample-size 100000 --run-id <t10_resource_k32_UTCSTAMP_MICROS> --i-understand-this-executes-real-data-model-training",
+      "population_size": 2000000,
+      "categorical_k": 32,
+      "sampling_seed": 42,
+      "model_seed": 42,
+      "diagnostic_sample_size": 100000,
+      "validation_scoring": "complete frozen VALIDATION cohort (2,096,938 rows), not bounded -- required for the PROJECTED_FULL 'VALIDATION-side already at full size' assumption to hold",
+      "notebook_confirmation_gate": "I_UNDERSTAND_THIS_RUNS_REAL_COMPUTE boolean cell, mirroring the CLI's --i-understand-this-executes-real-data-model-training flag -- defaults False",
+      "authorized_next_step_if_verdict_fails": "a separate, explicitly authorized categorical_k=16 attempt with a fresh run_id -- never automatic, never same run_id"
+    }
+  },
+  "lifecycle_state": "T10_REPRESENTATION_SELECTED_PENDING_RESOURCE_GATE",
   "feature_semantics_reopening_event": {
     "date": "2026-08-24",
     "decision": "D32",

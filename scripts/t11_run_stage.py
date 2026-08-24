@@ -36,7 +36,8 @@ REPO_ROOT = _find_repo_root(Path(__file__).resolve())
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-STAGE_CHOICES = ("smoke", "robustness", "gcp_parity", "full")
+STAGE_CHOICES = ("smoke", "resource", "robustness", "gcp_parity", "full")
+CATEGORICAL_K_CHOICES = (32, 16, 8)
 
 
 def _load_train_validation_ids(repo_root: Path):
@@ -83,6 +84,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--sampling-seed", type=int, default=42)
     parser.add_argument("--model-seed", type=int, required=True)
     parser.add_argument("--diagnostic-sample-size", type=int, required=True)
+    parser.add_argument(
+        "--categorical-k",
+        type=int,
+        required=True,
+        choices=CATEGORICAL_K_CHOICES,
+        help=(
+            "D34 categorical-encoder K, from the predeclared RESOURCE ladder 32 -> 16 -> 8. "
+            "For --stage resource: attempt 32 first; only pass 16/8 after a recorded prior "
+            "K's RESOURCE-gate attempt failed. Never chosen by performance."
+        ),
+    )
     parser.add_argument(
         "--validation-scoring-size",
         type=int,
@@ -170,6 +182,7 @@ def main(argv: list[str] | None = None) -> int:
         sampling_seed=args.sampling_seed,
         model_seed=args.model_seed,
         diagnostic_sample_size=args.diagnostic_sample_size,
+        categorical_k=args.categorical_k,
         config=config,
     )
 

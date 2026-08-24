@@ -21,6 +21,8 @@ import pytest
 
 import src.causal_forest_runner as causal_forest_runner
 from src.causal_forest_baseline import (
+    CATEGORICAL_ENCODER_K_LADDER,
+    CausalForestCategoricalEncoder,
     CausalForestRepresentationError,
     FROZEN_CAUSAL_FOREST_CONFIG,
     FROZEN_ECONML_VERSION,
@@ -31,12 +33,15 @@ from src.causal_forest_runner import (
     StageRequest,
     _ids_identity,
     _read_checkpoint_chain,
+    project_full_scale_resource,
+    resource_gate_pass_fail,
     stratified_subset_ids,
     modeling_environment,
     run_stage,
     write_active_sentinel,
 )
 from src.data import (
+    CATEGORICAL_FEATURES,
     FEATURE_COLUMNS,
     PRIMARY_OUTCOME,
     SOURCE_ROW_ID,
@@ -47,27 +52,22 @@ from src.data import (
 
 SMALL_CONFIG = {**FROZEN_CAUSAL_FOREST_CONFIG, "n_estimators": 8}  # divisible by subforest_size=4
 
-# D32: fit_causal_forest() now fails closed on raw, unencoded CRITEO categorical
-# token columns (f1/f3/f4/f5/f6/f8/f9/f11). src.causal_forest_runner passes
-# `src.data.FEATURE_COLUMNS` -- the real, contract-required raw column set --
-# straight into fit_causal_forest(), so any test that exercises a full
-# run_stage() fit is now genuinely blocked until an explicit CausalForest
-# representation ADR is accepted and the runner is updated to encode its
-# feature frame accordingly (docs/adr/ADR-CF-implementation.md). These tests
-# are skipped, not weakened or deleted, pending that ADR; see
-# test_run_stage_fails_closed_on_raw_categorical_representation below for the
-# corresponding "it blocks correctly" coverage.
-CF_REPRESENTATION_BLOCKED_REASON = (
-    "T11 CausalForest fit path blocked pending the CausalForest categorical "
-    "representation ADR (D32; docs/adr/ADR-CF-implementation.md) -- "
-    "src.causal_forest_runner passes raw FEATURE_COLUMNS directly, which "
-    "fit_causal_forest() now rejects by design"
-)
+# D34: the smallest predeclared K ladder rung -- keeps synthetic-fixture fits
+# cheap while still exercising a real top-K/OTHER split (categorical columns
+# below are drawn from a 20-value alphabet, well above K=8).
+TEST_CATEGORICAL_K = 8
 
 
 def _build_dataset(tmp_path: Path, rows: int) -> tuple[pads.Dataset, str]:
     rng = np.random.default_rng(7)
-    payload = {name: rng.normal(size=rows) for name in FEATURE_COLUMNS}
+    payload = {
+        name: (
+            rng.integers(0, 20, size=rows).astype(np.float64)
+            if name in CATEGORICAL_FEATURES
+            else rng.normal(size=rows)
+        )
+        for name in FEATURE_COLUMNS
+    }
     payload["treatment"] = rng.integers(0, 2, size=rows)
     payload["conversion"] = rng.integers(0, 2, size=rows)
     payload["visit"] = rng.integers(0, 2, size=rows)
@@ -92,6 +92,7 @@ def _make_request(
     diagnostic_sample_size: int = 20,
     sampling_seed: int = 42,
     model_seed: int = 42,
+    categorical_k: int = TEST_CATEGORICAL_K,
 ) -> StageRequest:
     return StageRequest(
         stage="robustness",
@@ -105,6 +106,7 @@ def _make_request(
         sampling_seed=sampling_seed,
         model_seed=model_seed,
         diagnostic_sample_size=diagnostic_sample_size,
+        categorical_k=categorical_k,
         config=SMALL_CONFIG,
     )
 
@@ -170,6 +172,23 @@ def test_stage_request_rejects_out_of_range_diagnostic_sample_size(
         )
 
 
+def test_stage_request_rejects_categorical_k_outside_predeclared_ladder(
+    tmp_path: Path, small_dataset
+) -> None:
+    dataset, dataset_sha256, train_ids, validation_ids = small_dataset
+    with pytest.raises(CausalForestRunnerError, match="RESOURCE ladder"):
+        _make_request(
+            tmp_path,
+            dataset,
+            dataset_sha256,
+            run_id="bad_k",
+            train_ids=train_ids,
+            validation_ids=validation_ids,
+            population_size=60,
+            categorical_k=10,
+        )
+
+
 def test_stage_request_rejects_unknown_stage(tmp_path: Path, small_dataset) -> None:
     dataset, dataset_sha256, train_ids, validation_ids = small_dataset
     with pytest.raises(CausalForestRunnerError, match="Unknown stage"):
@@ -185,6 +204,7 @@ def test_stage_request_rejects_unknown_stage(tmp_path: Path, small_dataset) -> N
             sampling_seed=42,
             model_seed=42,
             diagnostic_sample_size=10,
+            categorical_k=TEST_CATEGORICAL_K,
             config=SMALL_CONFIG,
         )
 
@@ -254,34 +274,77 @@ def test_stratified_subset_ids_also_works_on_a_validation_id_array(
     assert set(subset.tolist()).issubset(set(validation_ids.tolist()))
 
 
-# --- run_stage: raw-categorical-representation guard (D32) --------------------
+# --- run_stage: D34 categorical encoding + fail-closed guards -----------------
 
 
-def test_run_stage_fails_closed_on_raw_categorical_representation(
+def test_run_stage_encodes_categorical_features_before_fitting_and_succeeds(
     tmp_path: Path, small_dataset
 ) -> None:
-    """run_stage() must propagate fit_causal_forest()'s raw-representation
-    guard rather than silently succeeding on raw f0-f11 columns -- the
-    production consequence of D32 the skipped tests above are blocked on."""
+    """D34 resolves the runner-level D32 blocker: run_stage() now encodes
+    f1/f3/f4/f5/f6/f8/f9/f11 via CausalForestCategoricalEncoder before ever
+    calling fit_causal_forest(), so a raw FEATURE_COLUMNS frame from the
+    dataset succeeds instead of failing closed here. fit_causal_forest()'s
+    own raw-representation guard is unchanged and still covered directly in
+    tests/test_causal_forest_baseline.py (test_fit_rejects_raw_criteo_feature_frame)."""
 
     dataset, dataset_sha256, train_ids, validation_ids = small_dataset
     request = _make_request(
         tmp_path,
         dataset,
         dataset_sha256,
-        run_id="blocked_run",
+        run_id="encodes_and_succeeds",
         train_ids=train_ids,
         validation_ids=validation_ids,
         population_size=60,
     )
-    with pytest.raises(CausalForestRepresentationError, match="categorical"):
+    result = run_stage(request)
+    assert result["checkpoints"] == list(CHECKPOINT_SEQUENCE)
+
+    model_serialized = json.loads(
+        (request.run_root / "audit" / "checkpoints" / "002_model_serialized.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert model_serialized["categorical_k"] == TEST_CATEGORICAL_K
+    assert model_serialized["transformed_dimensionality"] == 8 * (TEST_CATEGORICAL_K + 1) + 4
+    assert set(model_serialized["other_bucket_mass_by_feature"].keys()) == set(CATEGORICAL_FEATURES)
+
+
+def test_run_stage_rejects_validation_scoring_when_categorical_encoder_is_none(
+    tmp_path: Path, small_dataset, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Owner rule (D34): a loaded/fitted model with categorical_encoder is
+    None must fail closed before validation prediction -- guards against a
+    historical/pre-D34 model silently entering the new runner path."""
+
+    dataset, dataset_sha256, train_ids, validation_ids = small_dataset
+    request = _make_request(
+        tmp_path,
+        dataset,
+        dataset_sha256,
+        run_id="legacy_no_encoder",
+        train_ids=train_ids,
+        validation_ids=validation_ids,
+        population_size=60,
+    )
+
+    original_ensure_model_serialized = causal_forest_runner._ensure_model_serialized
+
+    def _strip_encoder(*args, **kwargs):
+        import dataclasses as _dataclasses
+
+        fitted = original_ensure_model_serialized(*args, **kwargs)
+        return _dataclasses.replace(fitted, categorical_encoder=None)
+
+    monkeypatch.setattr(causal_forest_runner, "_ensure_model_serialized", _strip_encoder)
+
+    with pytest.raises(CausalForestRunnerError, match="categorical_encoder is None"):
         run_stage(request)
 
 
 # --- run_stage: full pipeline ---------------------------------------------------
 
 
-@pytest.mark.skip(reason=CF_REPRESENTATION_BLOCKED_REASON)
 def test_full_stage_run_produces_ordered_checkpoints_and_artifacts(
     tmp_path: Path, small_dataset
 ) -> None:
@@ -327,7 +390,6 @@ def test_full_stage_run_produces_ordered_checkpoints_and_artifacts(
     assert len(predictions) == len(validation_ids)
 
 
-@pytest.mark.skip(reason=CF_REPRESENTATION_BLOCKED_REASON)
 def test_full_stage_run_config_written_once_and_never_mutated(
     tmp_path: Path, small_dataset
 ) -> None:
@@ -352,7 +414,6 @@ def test_full_stage_run_config_written_once_and_never_mutated(
     assert sha256_file(run_config_path) == before_hash
 
 
-@pytest.mark.skip(reason=CF_REPRESENTATION_BLOCKED_REASON)
 def test_two_fresh_runs_with_identical_inputs_produce_identical_predictions(
     tmp_path: Path, small_dataset
 ) -> None:
@@ -383,7 +444,6 @@ def test_two_fresh_runs_with_identical_inputs_produce_identical_predictions(
     pd.testing.assert_frame_equal(predictions_a, predictions_b)
 
 
-@pytest.mark.skip(reason=CF_REPRESENTATION_BLOCKED_REASON)
 def test_smoke_stage_runs_through_same_dag_with_bounded_validation_scoring(
     tmp_path: Path, small_dataset
 ) -> None:
@@ -419,6 +479,7 @@ def test_smoke_stage_runs_through_same_dag_with_bounded_validation_scoring(
         sampling_seed=request.sampling_seed,
         model_seed=request.model_seed,
         diagnostic_sample_size=request.diagnostic_sample_size,
+        categorical_k=request.categorical_k,
         config=request.config,
     )
 
@@ -437,7 +498,6 @@ def test_smoke_stage_runs_through_same_dag_with_bounded_validation_scoring(
 # --- run_stage: resume / recovery -----------------------------------------------
 
 
-@pytest.mark.skip(reason=CF_REPRESENTATION_BLOCKED_REASON)
 def test_resume_after_crash_before_predictions_does_not_refit(
     tmp_path: Path, small_dataset, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -527,6 +587,43 @@ def test_resume_rejects_parameter_mismatch_against_checkpoint_one(
     )
     with pytest.raises(CausalForestRunnerError, match="Resume identity mismatch"):
         run_stage(mismatched_request)
+
+
+def test_resume_rejects_categorical_k_mismatch_against_checkpoint_one(
+    tmp_path: Path, small_dataset, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dataset, dataset_sha256, train_ids, validation_ids = small_dataset
+    request = _make_request(
+        tmp_path,
+        dataset,
+        dataset_sha256,
+        run_id="k_mismatch_test",
+        train_ids=train_ids,
+        validation_ids=validation_ids,
+        population_size=60,
+        categorical_k=32,
+    )
+
+    def always_raise(*args, **kwargs):
+        raise RuntimeError("stop after checkpoint 001")
+
+    monkeypatch.setattr(causal_forest_runner, "_ensure_model_serialized", always_raise)
+    with pytest.raises(RuntimeError, match="stop after checkpoint 001"):
+        run_stage(request)
+    monkeypatch.undo()
+
+    mismatched_k_request = _make_request(
+        tmp_path,
+        dataset,
+        dataset_sha256,
+        run_id="k_mismatch_test",
+        train_ids=train_ids,
+        validation_ids=validation_ids,
+        population_size=60,
+        categorical_k=16,  # different from the run that wrote checkpoint 001
+    )
+    with pytest.raises(CausalForestRunnerError, match="Resume identity mismatch"):
+        run_stage(mismatched_k_request)
 
 
 # --- _ResourceSampler (continuous RSS/host-memory sampler) ---------------------
@@ -642,7 +739,6 @@ def test_resource_sampler_thread_does_not_survive_an_exception_in_the_with_block
     assert not thread.is_alive()
 
 
-@pytest.mark.skip(reason=CF_REPRESENTATION_BLOCKED_REASON)
 def test_resource_evidence_schema_is_stable_across_independent_runs(
     tmp_path: Path, small_dataset
 ) -> None:
@@ -699,8 +795,178 @@ def test_resource_evidence_schema_is_stable_across_independent_runs(
         "system_memory_available_bytes_min",
         "system_memory_percent_max",
         "swap_used_bytes_max",
+        "categorical_k",
+        "transformed_dimensionality",
+        "other_bucket_mass_by_feature",
+        "baseline_rss_bytes",
+        "baseline_swap_used_bytes",
+        "train_categorical_encoding_wall_seconds",
+        "validation_categorical_encoding_wall_seconds",
+        "measured_resource_label",
+        "projected_full_resource_label",
+        "projected_full_resource",
+        "resource_gate_verdict",
     }
     assert set(evidence_a.keys()) == expected_keys
+
+
+# --- D34 RESOURCE-gate projection / pass-fail (pure functions) -----------------
+
+
+def test_project_full_scale_resource_scales_only_train_side_quantities() -> None:
+    measured = {
+        "fit_wall_seconds": 100.0,
+        "train_categorical_encoding_wall_seconds": 10.0,
+        "peak_rss_bytes": 1_000_000_000,
+        "predict_wall_seconds": 5.0,
+        "validation_categorical_encoding_wall_seconds": 1.0,
+        "persist_wall_seconds": 0.5,
+        "serialization_reload_wall_seconds": 0.2,
+        "transformed_dimensionality": 76,
+    }
+    projected = project_full_scale_resource(measured, measured_rows=2_000_000, full_rows=9_785_714)
+
+    ratio = 9_785_714 / 2_000_000
+    assert projected["label"] == "PROJECTED_FULL"
+    assert projected["fit_wall_seconds"] == pytest.approx(100.0 * ratio)
+    assert projected["train_categorical_encoding_wall_seconds"] == pytest.approx(10.0 * ratio)
+    assert projected["peak_rss_bytes"] == pytest.approx(1_000_000_000 * ratio)
+    # VALIDATION-side quantities are already at full size and must NOT scale.
+    assert projected["unscaled_validation_side_wall_seconds"] == pytest.approx(5.0 + 1.0 + 0.5 + 0.2)
+    assert projected["total_projected_wall_seconds"] == pytest.approx(
+        100.0 * ratio + 10.0 * ratio + (5.0 + 1.0 + 0.5 + 0.2)
+    )
+    assert projected["transformed_dimensionality"] == 76  # dimensionality does not scale with rows
+
+
+def test_project_full_scale_resource_at_ratio_one_equals_measured() -> None:
+    measured = {
+        "fit_wall_seconds": 42.0,
+        "train_categorical_encoding_wall_seconds": 3.0,
+        "peak_rss_bytes": 500,
+        "predict_wall_seconds": 1.0,
+    }
+    projected = project_full_scale_resource(measured, measured_rows=9_785_714, full_rows=9_785_714)
+    assert projected["row_ratio"] == pytest.approx(1.0)
+    assert projected["fit_wall_seconds"] == pytest.approx(42.0)
+    assert projected["peak_rss_bytes"] == pytest.approx(500)
+
+
+def _passing_projection() -> dict:
+    return {
+        "peak_rss_bytes": 1_000_000_000,  # well under the 24GB budget
+        "total_projected_wall_seconds": 60.0,  # well under the 10h budget
+    }
+
+
+def test_resource_gate_pass_fail_passes_when_all_criteria_met() -> None:
+    verdict = resource_gate_pass_fail(
+        _passing_projection(),
+        correctness_passed=True,
+        reload_matches=True,
+        swap_used_bytes_max=1000,
+        baseline_swap_used_bytes=1000,
+    )
+    assert verdict["passed"] is True
+    assert verdict["peak_memory_pass"] is True
+    assert verdict["wall_clock_pass"] is True
+    assert verdict["no_swap_instability"] is True
+
+
+def test_resource_gate_pass_fail_fails_on_memory_budget_alone() -> None:
+    over_budget = dict(_passing_projection())
+    over_budget["peak_rss_bytes"] = 25_000_000_000  # over the 24GB budget
+    verdict = resource_gate_pass_fail(
+        over_budget,
+        correctness_passed=True,
+        reload_matches=True,
+        swap_used_bytes_max=1000,
+        baseline_swap_used_bytes=1000,
+    )
+    assert verdict["peak_memory_pass"] is False
+    assert verdict["passed"] is False
+
+
+def test_resource_gate_pass_fail_fails_on_wall_clock_budget_alone() -> None:
+    over_budget = dict(_passing_projection())
+    over_budget["total_projected_wall_seconds"] = 11 * 3600  # over the 10h budget
+    verdict = resource_gate_pass_fail(
+        over_budget,
+        correctness_passed=True,
+        reload_matches=True,
+        swap_used_bytes_max=1000,
+        baseline_swap_used_bytes=1000,
+    )
+    assert verdict["wall_clock_pass"] is False
+    assert verdict["passed"] is False
+
+
+def test_resource_gate_pass_fail_fails_on_swap_growth() -> None:
+    verdict = resource_gate_pass_fail(
+        _passing_projection(),
+        correctness_passed=True,
+        reload_matches=True,
+        swap_used_bytes_max=2000,
+        baseline_swap_used_bytes=1000,  # 1000 bytes of new swap growth
+    )
+    assert verdict["no_swap_instability"] is False
+    assert verdict["passed"] is False
+
+
+def test_resource_gate_pass_fail_fails_closed_when_swap_unmeasurable() -> None:
+    """Missing swap evidence must never silently pass -- fail closed."""
+
+    verdict = resource_gate_pass_fail(
+        _passing_projection(),
+        correctness_passed=True,
+        reload_matches=True,
+        swap_used_bytes_max=None,
+        baseline_swap_used_bytes=None,
+    )
+    assert verdict["no_swap_instability"] is None
+    assert verdict["passed"] is False
+
+
+def test_resource_gate_pass_fail_fails_when_correctness_or_reload_fails() -> None:
+    verdict_bad_correctness = resource_gate_pass_fail(
+        _passing_projection(),
+        correctness_passed=False,
+        reload_matches=True,
+        swap_used_bytes_max=1000,
+        baseline_swap_used_bytes=1000,
+    )
+    assert verdict_bad_correctness["passed"] is False
+
+    verdict_bad_reload = resource_gate_pass_fail(
+        _passing_projection(),
+        correctness_passed=True,
+        reload_matches=False,
+        swap_used_bytes_max=1000,
+        baseline_swap_used_bytes=1000,
+    )
+    assert verdict_bad_reload["passed"] is False
+
+
+def test_resource_gate_pass_fail_never_reads_other_bucket_mass_or_performance_metrics() -> None:
+    """D34 owner rule: K is never selected using Qini/AUUC/uplift/conversion/
+    model-performance metrics or OTHER mass -- confirm the verdict function
+    accepts no such input and documents what it never gates on."""
+
+    import inspect
+
+    signature = inspect.signature(resource_gate_pass_fail)
+    forbidden_terms = ("other_bucket", "qini", "auuc", "conversion", "uplift", "performance")
+    for name in signature.parameters:
+        assert not any(term in name.lower() for term in forbidden_terms)
+
+    verdict = resource_gate_pass_fail(
+        _passing_projection(),
+        correctness_passed=True,
+        reload_matches=True,
+        swap_used_bytes_max=1000,
+        baseline_swap_used_bytes=1000,
+    )
+    assert set(verdict["never_gated_on"]) >= {"other_bucket_mass_by_feature", "qini", "auuc"}
 
 
 # --- environment / sentinel helpers ---------------------------------------------

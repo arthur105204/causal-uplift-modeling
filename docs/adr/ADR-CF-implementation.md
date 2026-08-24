@@ -35,22 +35,54 @@ not part of Sprint 1 model execution.
   D32 does **not** select a CausalForest encoding (ordinal/one-hot/hashing/
   target-encoding/etc.) -- that selection is this ADR's responsibility, not
   yet made. See "Feature-representation status" below.
+- D34 resolves the encoding selection D32 left open: a frequency-capped
+  ("top-K + explicit `OTHER`") one-hot representation, TRAIN-only fit and
+  frozen, with `K` governed by a predeclared RESOURCE-feasibility ladder
+  (`32 -> 16 -> 8`) rather than by predictive/uplift performance. Owner
+  decision recorded 2026-08-24. This resolves the representation *choice*;
+  it does not itself satisfy the resource gate below -- the encoding remains
+  held-out-ineligible until a RESOURCE benchmark at the selected `K` passes.
 
-## Feature-representation status (D32)
+## Feature-representation status (D32 / D34)
 
-**BLOCKED_PENDING_MIXED_TYPE_SPEC.** No CausalForest-specific categorical
-encoding has been selected. Any Causal Forest fit that was previously
-performed against the raw twelve-column `float64` frame (including prior T10
-resource/correctness evidence and any T11 fit) treated categorical tokens as
-ordered continuous quantities and is **stale feature-representation
-evidence** -- retained as historical record, not reusable to authorize a
-current model. Encoding selection requires its own evaluation of at least:
-memory/runtime impact at the ~9.8M-row FULL scale (D31), interaction with the
-honesty/support diagnostics below, and whether the encoding is fit train-only
-and reused without refitting on validation/held-out. No encoding is chosen by
-default and none is implied by the official Criteo benchmark's own
-hashing/one-hot preprocessing, which is evidence about their benchmark, not an
-automatic authorization for this project's `econml.grf.CausalForest` usage.
+**REPRESENTATION_SELECTED_PENDING_RESOURCE_GATE (D34, 2026-08-24).** The
+encoding is selected but not yet implemented, benchmarked, or fit:
+
+For each categorical feature (`f1`/`f3`/`f4`/`f5`/`f6`/`f8`/`f9`/`f11`),
+select the `K` most frequent categories observed in TRAIN only; map every
+other value -- including any category never seen in TRAIN -- to a single
+explicit `OTHER` level; one-hot encode the resulting `<= (K+1)` levels per
+feature. Continuous features (`f0`/`f2`/`f7`/`f10`) pass through unchanged as
+`float64`. The vocabulary is a function of TRAIN `X` only (never `Y`/`T`),
+fit once, frozen, and reused unchanged on validation/held-out -- the same
+train-only-fit-then-freeze discipline `LightGBMFeatureTransform` already
+uses. Resulting dimensionality is `8*(K+1) + 4`.
+
+`K` is governed by a predeclared RESOURCE-feasibility ladder, `K = 32 -> 16
+-> 8` (largest `K` that passes the memory/runtime safety gate below, never
+selected by comparing Qini/AUUC/uplift across `K`). If `K = 8` is still
+infeasible at the ~9.79M-row TRAIN FULL scale, this ADR stops for a new
+owner scope decision rather than substituting another encoding.
+
+Fixed-width feature hashing (hashed one-hot) is retained as a documented
+**rejected/fallback research candidate** (see D34 evidence), not the primary
+representation, on account of unquantified collision risk on the two least-
+concentrated categorical features (`f6`, `f8`). Ordinal/raw-token-as-numeric
+and unrestricted (full-cardinality) one-hot remain rejected -- see D34.
+
+Any Causal Forest fit that was previously performed against the raw
+twelve-column `float64` frame (including prior T10 resource/correctness
+evidence and any T11 fit) treated categorical tokens as ordered continuous
+quantities and is **stale feature-representation evidence** -- retained as
+historical record, not reusable to authorize a current model. Encoding
+*selection* is resolved (D34); encoding *feasibility* is not: the RESOURCE
+gate below (dimensionality, category coverage / `OTHER` mass per feature,
+peak memory, wall-clock, predict/reload correctness, no held-out access at
+the selected `K`) has not yet been run. No encoding is implied by the
+official Criteo benchmark's own hashing/one-hot preprocessing, which was
+evidence about their benchmark, not automatic authorization here -- D34's
+selection rests on this project's own memory/leakage/ordinal-structure
+analysis, not on the official benchmark's precedent.
 
 ## Provisional implementation decision
 
@@ -74,16 +106,16 @@ directly into `fit_causal_forest()` as an undifferentiated continuous/numeric
 matrix is not a conforming implementation of this ADR and must fail closed
 with an explicit error rather than proceed.
 
-`OPEN_DECISION / IMPLEMENTATION_BLOCKER`: the concrete categorical
-representation for Causal Forest (e.g., one-hot, ordinal, hashing, or target
-encoding) is not selected here. This ADR does not invent one. A candidate
-representation must be proposed as an explicit amendment to this ADR — not
-assumed from the official Criteo benchmark's own preprocessing, which is
-evidence about their benchmark, not automatic authorization for this
-project's econml usage — and must document its correctness, honesty/support
-compatibility, and memory/runtime cost at the ~9.8M-row training scale before
-it can be exercised at any RESOURCE gate or FULL run. Until resolved, Causal
-Forest fitting against real (non-synthetic-encoded) `f0`–`f11` input remains
+`RESOLVED_BY_D34 / RESOURCE_GATE_PENDING`: the concrete categorical
+representation for Causal Forest is selected -- frequency-capped top-K +
+`OTHER` one-hot, `K` chosen by a predeclared `32 -> 16 -> 8` resource ladder
+(see "Feature-representation status" above). Ordinal, unrestricted one-hot,
+and target/effect encoding are rejected; fixed-width hashing is a documented
+fallback, not primary. This selection still must be implemented and must
+document its correctness, honesty/support compatibility, and memory/runtime
+cost at the ~9.8M-row training scale before it can be exercised at any
+RESOURCE gate or FULL run. Until that RESOURCE gate passes, Causal Forest
+fitting against real (non-synthetic-encoded) `f0`–`f11` input remains
 blocked; this blocks gate progression, not the accepted `MAIN_COMPARATOR`
 role.
 
@@ -120,13 +152,15 @@ Causal Forest may enter held-out evaluation only after all gates have been
 evaluated and documented using synthetic or permitted development data before
 test release:
 
-0. **Feature-representation gate (D32):** select and record an explicit
-   categorical-token encoding for `f1`/`f3`/`f4`/`f5`/`f6`/`f8`/`f9`/`f11`
-   under its own justification (not inherited from the official Criteo
-   benchmark's preprocessing, and not an ordinal/one-hot/hashing/
-   target-encoding default chosen without comparison); verify it is fit
-   train-only and reused unchanged on validation/held-out, exactly as
-   `LightGBMFeatureTransform` already requires for LightGBM-family stages.
+0. **Feature-representation gate (D32/D34):** *Selection* is complete (D34):
+   frequency-capped top-K + `OTHER` one-hot, `K` from the predeclared
+   `32 -> 16 -> 8` resource ladder. *Feasibility* is not yet demonstrated --
+   this gate additionally requires implementing the encoder, verifying it is
+   fit train-only and reused unchanged on validation/held-out (exactly as
+   `LightGBMFeatureTransform` already requires for LightGBM-family stages),
+   and passing the RESOURCE benchmark (dimensionality, category coverage /
+   `OTHER` mass per feature, peak memory, wall-clock, predict/reload
+   correctness, no held-out access) at the largest feasible `K`.
    `fit_causal_forest()` fails closed on the raw categorical frame until this
    gate is passed -- see "Feature-representation status" above.
 1. **Correctness gate:** pin implementation/version/configuration and verify the

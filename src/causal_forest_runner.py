@@ -23,6 +23,7 @@ predictions, and a bounded diagnostic-support summary.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import pickle
@@ -42,6 +43,8 @@ import pyarrow.parquet as pq
 from sklearn.model_selection import train_test_split
 
 from src.causal_forest_baseline import (
+    CATEGORICAL_ENCODER_K_LADDER,
+    CausalForestCategoricalEncoder,
     FROZEN_CAUSAL_FOREST_CONFIG,
     FROZEN_ECONML_VERSION,
     FittedCausalForest,
@@ -63,7 +66,17 @@ from src.data import (
     write_json_new,
 )
 
-STAGES = ("smoke", "robustness", "gcp_parity", "full")
+STAGES = ("smoke", "resource", "robustness", "gcp_parity", "full")
+
+# D34 RESOURCE-gate constants. The RESOURCE population reuses the T10 config's
+# already-predeclared 2,000,000-row cohort (configs/t10_causal_forest.json
+# resource_gate_size) -- no new population size is declared here. FULL_TRAIN_ROWS
+# is D31's frozen one-shot TRAIN scale (9,785,714 rows).
+FULL_TRAIN_ROWS = 9_785_714
+KAGGLE_ASSUMED_TOTAL_RAM_BYTES = 30_000_000_000
+RESOURCE_GATE_PEAK_RSS_BUDGET_BYTES = int(0.8 * KAGGLE_ASSUMED_TOTAL_RAM_BYTES)
+RESOURCE_GATE_MAX_PROJECTED_FULL_WALL_SECONDS = 10 * 3600
+RESOURCE_GATE_SWAP_GROWTH_ALLOWANCE_BYTES = 0
 
 CHECKPOINT_STARTED = "001_started"
 CHECKPOINT_MODEL_SERIALIZED = "002_model_serialized"
@@ -113,11 +126,17 @@ class StageRequest:
     sampling_seed: int
     model_seed: int
     diagnostic_sample_size: int
+    categorical_k: int
     config: dict[str, object] | None = None
 
     def __post_init__(self) -> None:
         if self.stage not in STAGES:
             raise CausalForestRunnerError(f"Unknown stage {self.stage!r}; must be one of {STAGES}")
+        if self.categorical_k not in CATEGORICAL_ENCODER_K_LADDER:
+            raise CausalForestRunnerError(
+                f"categorical_k={self.categorical_k!r} is not in the predeclared RESOURCE ladder "
+                f"{CATEGORICAL_ENCODER_K_LADDER} (D34) -- K is never chosen ad hoc"
+            )
         if self.population_size <= 0:
             raise CausalForestRunnerError("population_size must be positive")
         if self.population_size > len(self.train_ids):
@@ -255,6 +274,18 @@ def _sample_rss_bytes() -> int | None:
         import psutil
 
         return int(psutil.Process().memory_info().rss)
+    except Exception:
+        return None
+
+
+def _sample_swap_bytes() -> int | None:
+    """Best-effort single host-swap-used snapshot. Never blocks a run if psutil
+    is absent. Used as the D34 RESOURCE gate's swap-growth baseline."""
+
+    try:
+        import psutil
+
+        return int(psutil.swap_memory().used)
     except Exception:
         return None
 
@@ -451,6 +482,7 @@ def run_stage(request: StageRequest) -> dict[str, Any]:
                 "sampling_seed": request.sampling_seed,
                 "model_seed": request.model_seed,
                 "diagnostic_sample_size": request.diagnostic_sample_size,
+                "categorical_k": request.categorical_k,
                 "dataset_sha256": request.dataset_sha256,
                 "train_ids_identity": train_identity,
                 "fit_train_ids_identity": fit_train_identity,
@@ -538,6 +570,8 @@ def _verify_resume_identity(
         mismatches.append("sampling_seed")
     if started.get("model_seed") != request.model_seed:
         mismatches.append("model_seed")
+    if started.get("categorical_k") != request.categorical_k:
+        mismatches.append("categorical_k")
     if started.get("dataset_sha256") != request.dataset_sha256:
         mismatches.append("dataset_sha256")
     if started.get("config_hash") != config_hash:
@@ -571,6 +605,7 @@ def _ensure_model_serialized(
         return pickle.loads(model_path.read_bytes())
 
     rss_timeline: dict[str, int | None] = {"before_train_load": _sample_rss_bytes()}
+    baseline_swap_used_bytes = _sample_swap_bytes()
 
     train_frame = materialize_pandas_by_source_row_id(
         request.dataset,
@@ -578,16 +613,29 @@ def _ensure_model_serialized(
         source_row_ids=fit_train_ids,
     )
     rss_timeline["after_train_load"] = _sample_rss_bytes()
+
+    # D34: fit the TRAIN-only categorical encoder and transform TRAIN before
+    # fitting CausalForest. fit_causal_forest() itself is unchanged -- it
+    # still only accepts an already-encoded numeric matrix and still fails
+    # closed on raw categorical columns (_reject_raw_categorical_columns).
+    encoder = CausalForestCategoricalEncoder(k=request.categorical_k)
+    encoding_started = time.perf_counter()
+    encoded_train_features = encoder.fit_transform(train_frame[list(FEATURE_COLUMNS)])
+    train_categorical_encoding_wall_seconds = time.perf_counter() - encoding_started
+    other_bucket_mass_by_feature = encoder.other_bucket_counts(train_frame[list(FEATURE_COLUMNS)])
+    transformed_dimensionality = len(encoder.output_columns)
+    rss_timeline["after_categorical_encoding"] = _sample_rss_bytes()
     rss_timeline["immediately_before_fit"] = _sample_rss_bytes()
 
     fit_started = time.perf_counter()
     fitted = fit_causal_forest(
-        X=train_frame[list(FEATURE_COLUMNS)],
+        X=encoded_train_features,
         T=train_frame[TREATMENT_COLUMN],
         Y=train_frame[PRIMARY_OUTCOME],
         config=config,
         seed=request.model_seed,
     )
+    fitted = dataclasses.replace(fitted, categorical_encoder=encoder)
     fit_wall_seconds = time.perf_counter() - fit_started
     rss_timeline["immediately_after_fit"] = _sample_rss_bytes()
     peak_rss_during_fit_bytes = (
@@ -603,8 +651,8 @@ def _ensure_model_serialized(
 
     reload_sample = train_frame[list(FEATURE_COLUMNS)].head(RELOAD_CHECK_SAMPLE_SIZE)
     reloaded = pickle.loads(model_path.read_bytes())
-    original_tau = predict_tau(fitted, reload_sample)
-    reloaded_tau = predict_tau(reloaded, reload_sample)
+    original_tau = predict_tau(fitted, fitted.categorical_encoder.transform(reload_sample))
+    reloaded_tau = predict_tau(reloaded, reloaded.categorical_encoder.transform(reload_sample))
     reload_matches = bool(np.array_equal(original_tau, reloaded_tau))
     serialization_reload_wall_seconds = time.perf_counter() - serialization_started
     if not reload_matches:
@@ -624,6 +672,11 @@ def _ensure_model_serialized(
             "model_artifact_path": MODEL_ARTIFACT_RELATIVE_PATH,
             "model_sha256": model_sha256,
             "config_hash": frozen_config_hash,
+            "categorical_k": request.categorical_k,
+            "transformed_dimensionality": transformed_dimensionality,
+            "other_bucket_mass_by_feature": other_bucket_mass_by_feature,
+            "train_categorical_encoding_wall_seconds": train_categorical_encoding_wall_seconds,
+            "baseline_swap_used_bytes": baseline_swap_used_bytes,
             "actual_train_rows": actual_train_rows,
             "fit_wall_seconds": fit_wall_seconds,
             "serialization_reload_wall_seconds": serialization_reload_wall_seconds,
@@ -650,13 +703,25 @@ def _ensure_predictions_persisted(
     if len(chain) >= 3:
         return predictions_path
 
+    if fitted.categorical_encoder is None:
+        raise CausalForestRunnerError(
+            "Fitted model has no categorical_encoder attached (categorical_encoder is None) -- "
+            "refusing to score VALIDATION under the D34 runner path. This guards against a "
+            "historical/pre-D34 model (fit before the D32 categorical representation was "
+            "selected) silently entering validation scoring."
+        )
+
     validation_frame = materialize_pandas_by_source_row_id(
         request.dataset,
         columns=[SOURCE_ROW_ID, *FEATURE_COLUMNS],
         source_row_ids=request.validation_ids,
     )
+    encoding_started = time.perf_counter()
+    encoded_validation_features = fitted.categorical_encoder.transform(validation_frame[list(FEATURE_COLUMNS)])
+    validation_categorical_encoding_wall_seconds = time.perf_counter() - encoding_started
+
     predict_started = time.perf_counter()
-    tau = predict_tau(fitted, validation_frame[list(FEATURE_COLUMNS)])
+    tau = predict_tau(fitted, encoded_validation_features)
     predict_wall_seconds = time.perf_counter() - predict_started
 
     persist_started = time.perf_counter()
@@ -682,6 +747,7 @@ def _ensure_predictions_persisted(
             "predictions_artifact_path": PREDICTIONS_ARTIFACT_RELATIVE_PATH,
             "predictions_sha256": predictions_sha256,
             "predicted_rows": int(len(validation_frame)),
+            "validation_categorical_encoding_wall_seconds": validation_categorical_encoding_wall_seconds,
             "predict_wall_seconds": predict_wall_seconds,
             "persist_wall_seconds": persist_wall_seconds,
             "rss_bytes_at_checkpoint": _sample_rss_bytes(),
@@ -691,12 +757,141 @@ def _ensure_predictions_persisted(
     return predictions_path
 
 
+def project_full_scale_resource(
+    measured: dict[str, Any],
+    *,
+    measured_rows: int,
+    full_rows: int = FULL_TRAIN_ROWS,
+) -> dict[str, Any]:
+    """Conservative linear (row-count-ratio) extrapolation of TRAIN-side
+    resource measurements from a bounded cohort (``measured_rows`` -- the
+    RESOURCE gate's population_size in practice) to the FULL D31 one-shot
+    TRAIN scale. Linear scaling assumes zero economy-of-scale for memory and
+    zero efficiency gain for wall-clock -- both biased toward overestimating
+    cost, the conservative direction for a gate protecting a one-shot,
+    non-retriable FULL fit.
+
+    Only TRAIN-side quantities (CausalForest fit, TRAIN-side categorical
+    encoding, and the peak RSS observed during fit) scale with the TRAIN
+    row-count ratio. VALIDATION-side quantities (prediction, VALIDATION-side
+    encoding, persistence) are already measured at their true full size at
+    every stage -- the frozen VALIDATION cohort does not grow with TRAIN's
+    population_size -- so they are carried through unscaled.
+
+    MEASURED_RESOURCE and PROJECTED_FULL are kept explicitly separate: this
+    function only ever reads ``measured`` and returns a new dict labeled
+    accordingly; it never mutates the measured payload.
+    """
+
+    if measured_rows <= 0:
+        raise CausalForestRunnerError("measured_rows must be positive")
+    ratio = full_rows / measured_rows
+
+    def _scale(key: str) -> float | None:
+        value = measured.get(key)
+        return value * ratio if value is not None else None
+
+    projected_fit_wall_seconds = _scale("fit_wall_seconds")
+    projected_train_encoding_wall_seconds = _scale("train_categorical_encoding_wall_seconds")
+    projected_peak_rss_bytes = _scale("peak_rss_bytes")
+
+    unscaled_validation_side_wall_seconds = sum(
+        value
+        for value in (
+            measured.get("predict_wall_seconds"),
+            measured.get("validation_categorical_encoding_wall_seconds"),
+            measured.get("persist_wall_seconds"),
+            measured.get("serialization_reload_wall_seconds"),
+        )
+        if value is not None
+    ) or None
+
+    total_projected_wall_seconds = None
+    if projected_fit_wall_seconds is not None and projected_train_encoding_wall_seconds is not None:
+        total_projected_wall_seconds = (
+            projected_fit_wall_seconds
+            + projected_train_encoding_wall_seconds
+            + (unscaled_validation_side_wall_seconds or 0.0)
+        )
+
+    return {
+        "label": "PROJECTED_FULL",
+        "scaling_method": "linear_by_train_row_count_ratio_no_sublinear_discount",
+        "measured_rows": measured_rows,
+        "full_rows": full_rows,
+        "row_ratio": ratio,
+        "transformed_dimensionality": measured.get("transformed_dimensionality"),
+        "peak_rss_bytes": projected_peak_rss_bytes,
+        "fit_wall_seconds": projected_fit_wall_seconds,
+        "train_categorical_encoding_wall_seconds": projected_train_encoding_wall_seconds,
+        "unscaled_validation_side_wall_seconds": unscaled_validation_side_wall_seconds,
+        "total_projected_wall_seconds": total_projected_wall_seconds,
+    }
+
+
+def resource_gate_pass_fail(
+    projected: dict[str, Any],
+    *,
+    correctness_passed: bool,
+    reload_matches: bool,
+    swap_used_bytes_max: int | None,
+    baseline_swap_used_bytes: int | None,
+) -> dict[str, Any]:
+    """D34 RESOURCE-gate PASS/FAIL verdict. Resource-and-correctness criteria
+    only -- K is never selected using Qini/AUUC/uplift/conversion/model-
+    performance metrics, and OTHER-bucket mass is recorded for
+    interpretation only and never enters this verdict."""
+
+    peak_memory_pass = (
+        projected.get("peak_rss_bytes") is not None
+        and projected["peak_rss_bytes"] <= RESOURCE_GATE_PEAK_RSS_BUDGET_BYTES
+    )
+    wall_clock_pass = (
+        projected.get("total_projected_wall_seconds") is not None
+        and projected["total_projected_wall_seconds"] <= RESOURCE_GATE_MAX_PROJECTED_FULL_WALL_SECONDS
+    )
+
+    swap_growth_bytes = None
+    no_swap_instability = None
+    if swap_used_bytes_max is not None and baseline_swap_used_bytes is not None:
+        swap_growth_bytes = swap_used_bytes_max - baseline_swap_used_bytes
+        no_swap_instability = swap_growth_bytes <= RESOURCE_GATE_SWAP_GROWTH_ALLOWANCE_BYTES
+
+    passed = bool(
+        peak_memory_pass
+        and wall_clock_pass
+        and correctness_passed
+        and reload_matches
+        and no_swap_instability is True
+    )
+
+    return {
+        "peak_memory_pass": peak_memory_pass,
+        "peak_memory_budget_bytes": RESOURCE_GATE_PEAK_RSS_BUDGET_BYTES,
+        "wall_clock_pass": wall_clock_pass,
+        "wall_clock_budget_seconds": RESOURCE_GATE_MAX_PROJECTED_FULL_WALL_SECONDS,
+        "correctness_passed": correctness_passed,
+        "reload_matches": reload_matches,
+        "no_swap_instability": no_swap_instability,
+        "swap_growth_bytes": swap_growth_bytes,
+        "swap_growth_allowance_bytes": RESOURCE_GATE_SWAP_GROWTH_ALLOWANCE_BYTES,
+        "oom_note": (
+            "A true OOM-kill prevents this payload from ever being written; the absence of "
+            "resource evidence for an attempted K is itself the OOM signal, observed externally "
+            "by the operator running the K-ladder, not a boolean this in-process payload can set."
+        ),
+        "never_gated_on": ["other_bucket_mass_by_feature", "qini", "auuc", "conversion_rate", "uplift_metric"],
+        "passed": passed,
+    }
+
+
 def _write_resource_evidence(
     run_root: Path,
     request: StageRequest,
     *,
     run_started_perf_counter: float,
     resource_sampler: "_ResourceSampler | None",
+    correctness_passed: bool,
 ) -> None:
     """Record model/prediction artifact sizes, disk footprint, timings, RSS,
     and host-memory pressure.
@@ -746,6 +941,18 @@ def _write_resource_evidence(
     )
     rss_timeline = model_serialized_checkpoint.get("rss_timeline")
     peak_rss_during_fit_bytes = model_serialized_checkpoint.get("peak_rss_during_fit_bytes")
+    categorical_k = model_serialized_checkpoint.get("categorical_k")
+    transformed_dimensionality = model_serialized_checkpoint.get("transformed_dimensionality")
+    other_bucket_mass_by_feature = model_serialized_checkpoint.get("other_bucket_mass_by_feature")
+    train_categorical_encoding_wall_seconds = model_serialized_checkpoint.get(
+        "train_categorical_encoding_wall_seconds"
+    )
+    baseline_swap_used_bytes = model_serialized_checkpoint.get("baseline_swap_used_bytes")
+    baseline_rss_bytes = (rss_timeline or {}).get("before_train_load")
+    reload_matches = model_serialized_checkpoint.get("reload_verification", {}).get("predictions_match")
+    validation_categorical_encoding_wall_seconds = predictions_checkpoint.get(
+        "validation_categorical_encoding_wall_seconds"
+    )
     predict_wall_seconds = predictions_checkpoint.get("predict_wall_seconds")
     persist_wall_seconds = predictions_checkpoint.get("persist_wall_seconds")
     predicted_rows = predictions_checkpoint.get("predicted_rows")
@@ -799,7 +1006,45 @@ def _write_resource_evidence(
         "system_memory_available_bytes_min": system_memory_available_bytes_min,
         "system_memory_percent_max": system_memory_percent_max,
         "swap_used_bytes_max": swap_used_bytes_max,
+        "categorical_k": categorical_k,
+        "transformed_dimensionality": transformed_dimensionality,
+        "other_bucket_mass_by_feature": other_bucket_mass_by_feature,
+        "baseline_rss_bytes": baseline_rss_bytes,
+        "baseline_swap_used_bytes": baseline_swap_used_bytes,
+        "train_categorical_encoding_wall_seconds": train_categorical_encoding_wall_seconds,
+        "validation_categorical_encoding_wall_seconds": validation_categorical_encoding_wall_seconds,
+        "measured_resource_label": "MEASURED_RESOURCE",
     }
+
+    if request.population_size and payload.get("fit_wall_seconds") is not None:
+        projected_full_resource = project_full_scale_resource(
+            {
+                "fit_wall_seconds": fit_wall_seconds,
+                "train_categorical_encoding_wall_seconds": train_categorical_encoding_wall_seconds,
+                "peak_rss_bytes": peak_rss_bytes,
+                "predict_wall_seconds": predict_wall_seconds,
+                "validation_categorical_encoding_wall_seconds": validation_categorical_encoding_wall_seconds,
+                "persist_wall_seconds": persist_wall_seconds,
+                "serialization_reload_wall_seconds": serialization_reload_wall_seconds,
+                "transformed_dimensionality": transformed_dimensionality,
+            },
+            measured_rows=request.population_size,
+        )
+        resource_gate_verdict = resource_gate_pass_fail(
+            projected_full_resource,
+            correctness_passed=correctness_passed,
+            reload_matches=bool(reload_matches),
+            swap_used_bytes_max=swap_used_bytes_max,
+            baseline_swap_used_bytes=baseline_swap_used_bytes,
+        )
+    else:
+        projected_full_resource = None
+        resource_gate_verdict = None
+
+    payload["projected_full_resource_label"] = "PROJECTED_FULL"
+    payload["projected_full_resource"] = projected_full_resource
+    payload["resource_gate_verdict"] = resource_gate_verdict
+
     write_json_new(run_root, RESOURCE_EVIDENCE_RELATIVE_PATH, payload)
 
 
@@ -817,6 +1062,13 @@ def _ensure_finalized(
     if len(chain) >= 4:
         return json.loads(summary_path.read_text(encoding="utf-8"))
 
+    if fitted.categorical_encoder is None:
+        raise CausalForestRunnerError(
+            "Fitted model has no categorical_encoder attached (categorical_encoder is None) -- "
+            "refusing to run the D34 diagnostic-support scoring path. This guards against a "
+            "historical/pre-D34 model silently entering finalize."
+        )
+
     rng = np.random.default_rng(request.sampling_seed)
     audit_ids = rng.choice(
         request.validation_ids, size=request.diagnostic_sample_size, replace=False
@@ -826,7 +1078,8 @@ def _ensure_finalized(
         columns=[SOURCE_ROW_ID, *FEATURE_COLUMNS],
         source_row_ids=audit_ids,
     )
-    support = aggregate_jacobian_support(fitted, audit_frame[list(FEATURE_COLUMNS)])
+    encoded_audit_features = fitted.categorical_encoder.transform(audit_frame[list(FEATURE_COLUMNS)])
+    support = aggregate_jacobian_support(fitted, encoded_audit_features)
     summary_payload = {
         "n_queries": support.n_queries,
         "full_rank_dimension": support.full_rank_dimension,
@@ -844,6 +1097,7 @@ def _ensure_finalized(
         request,
         run_started_perf_counter=run_started_perf_counter,
         resource_sampler=resource_sampler,
+        correctness_passed=support.passed,
     )
 
     _write_checkpoint(

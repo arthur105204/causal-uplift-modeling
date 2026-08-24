@@ -20,9 +20,10 @@ import json
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 from econml.grf import CausalForest
 
-from src.data import CATEGORICAL_FEATURES, DataContractError
+from src.data import CATEGORICAL_FEATURES, CONTINUOUS_FEATURES, FEATURE_COLUMNS, DataContractError
 
 FROZEN_ECONML_VERSION = "0.17.0"
 
@@ -93,6 +94,157 @@ def _reject_raw_categorical_columns(X) -> None:
         )
 
 
+CATEGORICAL_ENCODER_K_LADDER = (32, 16, 8)
+
+
+class CausalForestEncodingError(DataContractError):
+    """Raised when CausalForestCategoricalEncoder is misused or fed invalid input."""
+
+
+def _other_column(feature: str) -> str:
+    return f"{feature}__OTHER"
+
+
+def _category_column(feature: str, value: float) -> str:
+    return f"{feature}__cat_{value!r}"
+
+
+def _require_feature_columns(frame: pd.DataFrame) -> None:
+    missing = sorted(set(FEATURE_COLUMNS).difference(frame.columns))
+    if missing:
+        raise CausalForestEncodingError(f"Frame is missing required feature columns: {missing}")
+
+
+def _reject_missing_categorical_values(frame: pd.DataFrame) -> None:
+    """FAIL CLOSED on NaN in a D34 categorical feature (owner decision,
+    2026-08-24). T03 evidence shows zero missing values across the released
+    population, so a NaN here signals an unexpected data-contract change --
+    it is not silently routed to OTHER or a new MISSING bucket."""
+
+    for feature in CATEGORICAL_FEATURES:
+        na_count = int(frame[feature].isna().sum())
+        if na_count:
+            raise CausalForestEncodingError(
+                f"Categorical feature {feature!r} contains {na_count} missing value(s); "
+                "CausalForestCategoricalEncoder fails closed on NaN per the D34 owner decision "
+                "(no MISSING bucket, no routing to OTHER)."
+            )
+
+
+class CausalForestCategoricalEncoder:
+    """Frequency-capped ('top-K + OTHER') one-hot representation for
+    CausalForest's categorical features (D34; resolves the D32 encoding
+    blocker in docs/adr/ADR-CF-implementation.md).
+
+    TRAIN-only fit, frozen and reused unchanged on validation/held-out --
+    this object is never refit downstream of its first ``fit()`` call.
+    Continuous features (``CONTINUOUS_FEATURES``) pass through unchanged.
+    Categorical features (``CATEGORICAL_FEATURES``) become one binary
+    indicator column per retained category plus one trailing ``OTHER``
+    indicator -- never a single integer/rank column, which would
+    reintroduce the ordinal-structure bug D32 exists to fix.
+
+    ``k`` must come from the predeclared RESOURCE ladder
+    ``CATEGORICAL_ENCODER_K_LADDER`` and is chosen only by resource
+    feasibility (see ``src/causal_forest_runner.py``'s RESOURCE gate) --
+    never by predictive/uplift performance.
+    """
+
+    def __init__(self, k: int) -> None:
+        if k not in CATEGORICAL_ENCODER_K_LADDER:
+            raise CausalForestEncodingError(
+                f"k={k!r} is not in the predeclared RESOURCE ladder {CATEGORICAL_ENCODER_K_LADDER}"
+            )
+        self._k = k
+        self._fitted = False
+        self._vocabularies: dict[str, list[float]] = {}
+
+    @property
+    def k(self) -> int:
+        return self._k
+
+    def fit(self, train_frame: pd.DataFrame) -> "CausalForestCategoricalEncoder":
+        _require_feature_columns(train_frame)
+        _reject_missing_categorical_values(train_frame)
+
+        vocabularies: dict[str, list[float]] = {}
+        for feature in CATEGORICAL_FEATURES:
+            values = train_frame[feature].astype("float64")
+            counts = values.value_counts()
+            # Deterministic tie-break: (count DESC, category value ASC) --
+            # never rely on value_counts()'s own tie ordering, which is not
+            # a stable cross-version contract.
+            ranked = sorted(counts.index.tolist(), key=lambda v: (-counts[v], v))
+            top_k = sorted(ranked[: self._k])
+            vocabularies[feature] = [float(v) for v in top_k]
+
+        self._vocabularies = vocabularies
+        self._fitted = True
+        return self
+
+    def transform(self, frame: pd.DataFrame) -> pd.DataFrame:
+        if not self._fitted:
+            raise CausalForestEncodingError("transform() called before fit()")
+        _require_feature_columns(frame)
+        _reject_missing_categorical_values(frame)
+
+        blocks: list[pd.DataFrame] = [frame[[feature]].astype("float64") for feature in CONTINUOUS_FEATURES]
+
+        for feature in CATEGORICAL_FEATURES:
+            vocab = self._vocabularies[feature]
+            values = frame[feature].astype("float64")
+            in_vocab = values.isin(vocab)
+            block_columns = {
+                _category_column(feature, value): (values == value).astype("float64") for value in vocab
+            }
+            block_columns[_other_column(feature)] = (~in_vocab).astype("float64")
+            blocks.append(pd.DataFrame(block_columns, index=frame.index))
+
+        output = pd.concat(blocks, axis=1)
+        if list(output.columns) != self.output_columns:
+            raise CausalForestEncodingError("Transformed column order drifted from the frozen contract")
+        return output
+
+    def fit_transform(self, train_frame: pd.DataFrame) -> pd.DataFrame:
+        return self.fit(train_frame).transform(train_frame)
+
+    @property
+    def output_columns(self) -> list[str]:
+        if not self._fitted:
+            raise CausalForestEncodingError("output_columns accessed before fit()")
+        columns: list[str] = list(CONTINUOUS_FEATURES)
+        for feature in CATEGORICAL_FEATURES:
+            for value in self._vocabularies[feature]:
+                columns.append(_category_column(feature, value))
+            columns.append(_other_column(feature))
+        return columns
+
+    def other_bucket_counts(self, frame: pd.DataFrame) -> dict[str, int]:
+        """Diagnostic only -- reported for interpretation, never used to
+        select K (K is a resource-feasibility decision, D34)."""
+
+        if not self._fitted:
+            raise CausalForestEncodingError("other_bucket_counts() called before fit()")
+        _require_feature_columns(frame)
+        _reject_missing_categorical_values(frame)
+
+        result: dict[str, int] = {}
+        for feature in CATEGORICAL_FEATURES:
+            values = frame[feature].astype("float64")
+            vocab = self._vocabularies[feature]
+            result[feature] = int((~values.isin(vocab)).sum())
+        return result
+
+    def vocabulary_state(self) -> dict[str, object]:
+        if not self._fitted:
+            raise CausalForestEncodingError("vocabulary_state() called before fit()")
+        return {
+            "k": self._k,
+            "vocabularies": {feature: list(values) for feature, values in self._vocabularies.items()},
+            "output_dimensionality": len(self.output_columns),
+        }
+
+
 def config_hash(config: dict[str, object] | None = None) -> str:
     """Deterministic sha256 of the frozen config, same convention as
     src/lightgbm_baseline.py's config_hash()."""
@@ -106,6 +258,13 @@ class FittedCausalForest:
     model: CausalForest
     config_hash: str
     feature_names: tuple[str, ...]
+    # D34: the frozen TRAIN-only categorical encoder that produced this
+    # model's X, if any. Default None keeps this backward compatible with
+    # every call site/test that predates D34 (an already-encoded synthetic
+    # matrix with no encoder attached). None here is also the fail-closed
+    # signal src.causal_forest_runner uses to refuse validation scoring of a
+    # historical/pre-D34 model under the new runner path.
+    categorical_encoder: "CausalForestCategoricalEncoder | None" = None
 
 
 def fit_causal_forest(

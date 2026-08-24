@@ -8,6 +8,7 @@ T10 SMOKE/RESOURCE notebook stages, not here.
 
 from __future__ import annotations
 
+import dataclasses
 import pickle
 
 import numpy as np
@@ -18,6 +19,8 @@ from scipy.stats import spearmanr
 from src.causal_forest_baseline import (
     FROZEN_CAUSAL_FOREST_CONFIG,
     AggregateSupportResult,
+    CausalForestCategoricalEncoder,
+    CausalForestEncodingError,
     CausalForestRepresentationError,
     LeafArmSupport,
     aggregate_jacobian_support,
@@ -26,7 +29,7 @@ from src.causal_forest_baseline import (
     honest_leaf_arm_support,
     predict_tau,
 )
-from src.data import CATEGORICAL_FEATURES, FEATURE_COLUMNS
+from src.data import CATEGORICAL_FEATURES, CONTINUOUS_FEATURES, FEATURE_COLUMNS
 
 # Deliberately NOT the raw f0-f11 Criteo column names: these tests exercise an
 # already-encoded generic numeric matrix, distinct from the raw representation
@@ -390,3 +393,216 @@ def test_reload_via_pickle_matches_original_exactly() -> None:
 
     np.testing.assert_array_equal(original_tau, reloaded_tau)
     assert reloaded_model.config_hash == model.config_hash
+
+
+# --- CausalForestCategoricalEncoder (D34) --------------------------------------
+# Resolves the D32 blocker: frequency-capped top-K + explicit OTHER one-hot,
+# TRAIN-only fit and frozen. K is never chosen ad hoc -- only from
+# CATEGORICAL_ENCODER_K_LADDER (32/16/8), by resource feasibility (see
+# src/causal_forest_runner.py), never by predictive/uplift performance.
+
+
+def _raw_criteo_frame(n: int, seed: int, *, categorical_cardinality: int = 20) -> pd.DataFrame:
+    """A synthetic frame shaped like the real f0-f11 contract: continuous
+    features are iid normal; categorical features are integer-valued tokens
+    (stored float64, per D32) drawn from a small alphabet so repeats -- and
+    therefore a meaningful top-K/OTHER split -- actually occur."""
+
+    rng = np.random.default_rng(seed)
+    payload = {
+        feature: (
+            rng.integers(0, categorical_cardinality, size=n).astype(np.float64)
+            if feature in CATEGORICAL_FEATURES
+            else rng.normal(size=n)
+        )
+        for feature in FEATURE_COLUMNS
+    }
+    return pd.DataFrame(payload, columns=list(FEATURE_COLUMNS))
+
+
+def test_encoder_rejects_k_outside_predeclared_ladder() -> None:
+    with pytest.raises(CausalForestEncodingError, match="RESOURCE ladder"):
+        CausalForestCategoricalEncoder(k=10)
+
+
+def test_encoder_fit_selects_exact_top_k_categories_by_train_frequency() -> None:
+    train = _raw_criteo_frame(500, seed=100, categorical_cardinality=20)
+    encoder = CausalForestCategoricalEncoder(k=8).fit(train)
+
+    feature = CATEGORICAL_FEATURES[0]
+    counts = train[feature].value_counts()
+    expected_top8 = sorted(sorted(counts.index.tolist(), key=lambda v: (-counts[v], v))[:8])
+    assert encoder.vocabulary_state()["vocabularies"][feature] == expected_top8
+
+
+def test_encoder_deterministic_tie_break_by_ascending_category_value() -> None:
+    """All categories equally frequent -- top-K must be the K smallest
+    values, not an arbitrary/hash-order-dependent selection."""
+
+    n = 400
+    rng = np.random.default_rng(101)
+    payload = {
+        feature: (
+            np.tile(np.arange(20, dtype=np.float64), n // 20)
+            if feature in CATEGORICAL_FEATURES
+            else rng.normal(size=n)
+        )
+        for feature in FEATURE_COLUMNS
+    }
+    train = pd.DataFrame(payload, columns=list(FEATURE_COLUMNS))
+    encoder = CausalForestCategoricalEncoder(k=8).fit(train)
+
+    feature = CATEGORICAL_FEATURES[0]
+    assert encoder.vocabulary_state()["vocabularies"][feature] == [float(v) for v in range(8)]
+
+
+def test_encoder_unseen_and_tail_categories_map_to_other() -> None:
+    train = _raw_criteo_frame(500, seed=102, categorical_cardinality=20)
+    encoder = CausalForestCategoricalEncoder(k=8).fit(train)
+
+    other_frame = _raw_criteo_frame(50, seed=999, categorical_cardinality=200)  # mostly unseen
+    encoded = encoder.transform(other_frame)
+    feature = CATEGORICAL_FEATURES[0]
+    other_column = f"{feature}__OTHER"
+    counts = encoder.other_bucket_counts(other_frame)
+    assert encoded[other_column].sum() == counts[feature]
+    assert counts[feature] > 0
+
+
+def test_encoder_continuous_features_pass_through_unchanged() -> None:
+    train = _raw_criteo_frame(300, seed=103)
+    encoder = CausalForestCategoricalEncoder(k=8).fit(train)
+    encoded = encoder.transform(train)
+    for feature in CONTINUOUS_FEATURES:
+        np.testing.assert_array_equal(
+            encoded[feature].to_numpy(), train[feature].astype("float64").to_numpy()
+        )
+
+
+def test_encoder_vocabulary_is_train_only_and_frozen_on_transform_of_other_frame() -> None:
+    train = _raw_criteo_frame(300, seed=104, categorical_cardinality=20)
+    encoder = CausalForestCategoricalEncoder(k=8).fit(train)
+    vocab_before = encoder.vocabulary_state()
+
+    other_frame = _raw_criteo_frame(300, seed=999, categorical_cardinality=20)
+    encoder.transform(other_frame)  # transform must never mutate fitted state
+    assert encoder.vocabulary_state() == vocab_before
+
+
+def test_encoder_row_order_and_count_preserved() -> None:
+    train = _raw_criteo_frame(50, seed=105, categorical_cardinality=10)
+    encoder = CausalForestCategoricalEncoder(k=8).fit(train)
+    encoded = encoder.transform(train)
+    assert len(encoded) == len(train)
+    assert list(encoded.index) == list(train.index)
+
+
+def test_encoder_output_column_order_is_deterministic_and_documented() -> None:
+    train = _raw_criteo_frame(300, seed=106, categorical_cardinality=20)
+    encoder = CausalForestCategoricalEncoder(k=8).fit(train)
+    encoded = encoder.transform(train)
+
+    expected_columns = list(CONTINUOUS_FEATURES)
+    for feature in CATEGORICAL_FEATURES:
+        vocab = encoder.vocabulary_state()["vocabularies"][feature]
+        expected_columns.extend(f"{feature}__cat_{value!r}" for value in vocab)
+        expected_columns.append(f"{feature}__OTHER")
+
+    assert list(encoded.columns) == expected_columns
+    assert encoder.output_columns == expected_columns
+    # Every categorical dummy column is strictly binary -- never a rank/code,
+    # which would reintroduce the D32 ordinal-structure bug.
+    for column in expected_columns:
+        if column not in CONTINUOUS_FEATURES:
+            assert set(encoded[column].unique().tolist()) <= {0.0, 1.0}
+
+
+def test_encoder_transform_before_fit_raises() -> None:
+    encoder = CausalForestCategoricalEncoder(k=8)
+    train = _raw_criteo_frame(10, seed=107)
+    with pytest.raises(CausalForestEncodingError, match="before fit"):
+        encoder.transform(train)
+
+
+def test_encoder_rejects_missing_feature_columns() -> None:
+    train = _raw_criteo_frame(10, seed=108)
+    encoder = CausalForestCategoricalEncoder(k=8)
+    with pytest.raises(CausalForestEncodingError, match="missing required feature columns"):
+        encoder.fit(train.drop(columns=[CATEGORICAL_FEATURES[0]]))
+
+
+def test_encoder_fails_closed_on_missing_categorical_value_at_fit() -> None:
+    """Owner decision (2026-08-24): NaN in a categorical feature fails
+    closed -- no MISSING bucket, no routing to OTHER."""
+
+    train = _raw_criteo_frame(20, seed=109)
+    train.loc[0, CATEGORICAL_FEATURES[0]] = np.nan
+    encoder = CausalForestCategoricalEncoder(k=8)
+    with pytest.raises(CausalForestEncodingError, match="missing value"):
+        encoder.fit(train)
+
+
+def test_encoder_fails_closed_on_missing_categorical_value_at_transform() -> None:
+    train = _raw_criteo_frame(20, seed=110)
+    encoder = CausalForestCategoricalEncoder(k=8).fit(train)
+    other_frame = _raw_criteo_frame(5, seed=111)
+    other_frame.loc[0, CATEGORICAL_FEATURES[0]] = np.nan
+    with pytest.raises(CausalForestEncodingError, match="missing value"):
+        encoder.transform(other_frame)
+
+
+def test_encoder_never_produces_a_missing_or_nan_bucket() -> None:
+    train = _raw_criteo_frame(100, seed=112)
+    encoder = CausalForestCategoricalEncoder(k=8).fit(train)
+    assert not any("MISSING" in column or "nan" in column.lower() for column in encoder.output_columns)
+
+
+def test_encoder_output_feeds_fit_causal_forest_as_already_encoded_matrix() -> None:
+    """Encoder output must be exactly the shape fit_causal_forest() already
+    accepts -- fit_causal_forest()/predict_tau() themselves are unchanged."""
+
+    n = 400
+    train = _raw_criteo_frame(n, seed=113, categorical_cardinality=10)
+    encoder = CausalForestCategoricalEncoder(k=8).fit(train)
+    encoded = encoder.transform(train)
+
+    rng = np.random.default_rng(113)
+    T = rng.integers(0, 2, size=n).astype(np.float64)
+    Y = 0.5 * train[CONTINUOUS_FEATURES[0]].to_numpy() + T * EFFECT_MAGNITUDE + rng.normal(size=n)
+
+    model = _fit(encoded, T, Y)
+    assert model.feature_names == tuple(encoder.output_columns)
+    tau_hat = predict_tau(model, encoded)
+    assert np.isfinite(tau_hat).all()
+
+
+def test_fitted_causal_forest_categorical_encoder_defaults_to_none() -> None:
+    """Backward compatibility: every pre-D34 call site/test builds
+    FittedCausalForest without an encoder and must be unaffected."""
+
+    X, T, noise = _synthetic_frame(seed=120)
+    Y = 0.5 * X["x0"].to_numpy() + T * EFFECT_MAGNITUDE + noise
+    model = _fit(X, T, Y)
+    assert model.categorical_encoder is None
+
+
+def test_fitted_causal_forest_pickle_round_trip_carries_encoder_and_reproduces_predictions() -> None:
+    n = 300
+    train = _raw_criteo_frame(n, seed=121, categorical_cardinality=15)
+    encoder = CausalForestCategoricalEncoder(k=8).fit(train)
+    encoded = encoder.transform(train)
+
+    rng = np.random.default_rng(121)
+    T = rng.integers(0, 2, size=n).astype(np.float64)
+    Y = 0.5 * train[CONTINUOUS_FEATURES[0]].to_numpy() + T * EFFECT_MAGNITUDE + rng.normal(size=n)
+
+    model = _fit(encoded, T, Y)
+    model = dataclasses.replace(model, categorical_encoder=encoder)
+
+    original_tau = predict_tau(model, encoder.transform(train))
+    reloaded_model = pickle.loads(pickle.dumps(model))
+    assert reloaded_model.categorical_encoder is not None
+    reloaded_tau = predict_tau(reloaded_model, reloaded_model.categorical_encoder.transform(train))
+
+    np.testing.assert_array_equal(original_tau, reloaded_tau)
+    assert reloaded_model.categorical_encoder.vocabulary_state() == encoder.vocabulary_state()
