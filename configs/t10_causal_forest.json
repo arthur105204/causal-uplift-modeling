@@ -149,12 +149,20 @@
     "start_t11_implementation": false,
     "commit_or_push": false
   },
-  "lifecycle_state": "T10_ACCEPTED",
+  "lifecycle_state": "T10_BLOCKED_PENDING_FEATURE_REPRESENTATION",
+  "feature_semantics_reopening_event": {
+    "date": "2026-08-24",
+    "decision": "D32",
+    "reason": "T10_ACCEPTED (below, preserved as superseded_lifecycle_state) was granted while fit_causal_forest() accepted the raw twelve-column float64 X.to_numpy() frame directly -- treating f1/f3/f4/f5/f6/f8/f9/f11 (categorical tokens per the publisher and the official Criteo benchmark) as ordered continuous quantities. src/causal_forest_baseline.py now fails closed (CausalForestRepresentationError) on that raw representation. econml.grf.CausalForest has no native categorical representation equivalent to LightGBM's, so an explicit CausalForest-specific encoding is required and has not been selected -- see ADR-CF-implementation.md's new Feature-representation gate/status.",
+    "effect_on_historical_evidence": "accepted_smoke_run_id and retained_resource_run_id below are NOT deleted or rewritten -- they remain the real, governed record of what was executed. Their status is amended to STALE_FEATURE_REPRESENTATION: neither authorizes a current CausalForest model, and neither may be reused to skip a corrected SMOKE/RESOURCE cycle once a representation is selected and this ADR's Feature-representation gate passes.",
+    "unaffected_by_this_reopening": "honesty_support_algorithm, support_gate_correction, and synthetic_gate mechanics above are orchestration/diagnostic mechanics independent of feature representation and remain valid as declared."
+  },
+  "superseded_lifecycle_state": "T10_ACCEPTED",
   "lifecycle_state_evidence": {
-    "note": "SMOKE and RESOURCE both closed for T10's purposes under D31's final disposition (decision_record.final_disposition_locked_D31). Downstream seed-robustness (500K) and T11 FULL remain separate, not-yet-executed work governed by seed_robustness_plan_D31 / t11_full_and_stage4_policy_D31 above.",
-    "local_preflight_tests": "tests/test_causal_forest_baseline.py, 19/19 passed (post-support-gate-correction)",
-    "accepted_smoke_run_id": "t10_smoke_20260819T091713Z_996970",
+    "note": "SMOKE and RESOURCE were both closed for T10's purposes under D31's final disposition (decision_record.final_disposition_locked_D31) BEFORE D32's feature-semantics reopening. Downstream seed-robustness (500K) and T11 FULL remain separate, not-yet-executed work governed by seed_robustness_plan_D31 / t11_full_and_stage4_policy_D31 above, and are additionally blocked by feature_semantics_reopening_event until a CausalForest representation is accepted.",
+    "local_preflight_tests": "tests/test_causal_forest_baseline.py, 19/19 passed (post-support-gate-correction); STALE as of D32 -- the raw-representation synthetic fixtures are superseded by the D32 fixture rewrite (encoded generic numeric matrix + explicit raw-frame-rejection tests) that now also passes",
+    "accepted_smoke_run_id": "t10_smoke_20260819T091713Z_996970 (STALE_FEATURE_REPRESENTATION per D32 -- raw f0-f11 fit directly, retained as historical record only)",
     "superseded_incomplete_local_run": "t10_smoke_20260819T074012Z_483118 (200,000 rows, old per-leaf gate, incomplete/failed -- retained as diagnostic evidence, not authoritative)",
-    "retained_resource_run_id": "t10_resource_20260819T093301Z_574711 (2,000,000 rows, retained correctness/resource evidence, not rerun, not a seed-robustness stand-in)"
+    "retained_resource_run_id": "t10_resource_20260819T093301Z_574711 (2,000,000 rows, retained correctness/resource evidence, not rerun, not a seed-robustness stand-in; STALE_FEATURE_REPRESENTATION per D32 -- raw f0-f11 fit directly, retained as historical record only)"
   }
 }

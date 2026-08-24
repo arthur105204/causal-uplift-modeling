@@ -16,7 +16,11 @@ from dataclasses import dataclass
 
 import lightgbm as lgb
 import numpy as np
-
+import pandas as pd
+from src.data import (
+    CATEGORICAL_FEATURES,
+    CONTINUOUS_FEATURES,
+)
 FROZEN_LIGHTGBM_VERSION = "4.7.0"
 
 # Every value left at LightGBM's own library default except where a project
@@ -43,6 +47,27 @@ FROZEN_BINARY_CONFIG: dict[str, object] = {
 }
 NUM_BOOST_ROUND_CAP = 2000
 EARLY_STOPPING_ROUNDS = 50
+
+
+def _validate_feature_semantics(X) -> None:
+    for feature in CONTINUOUS_FEATURES:
+        if feature not in X.columns:
+            raise ValueError(f"Missing continuous feature {feature}")
+        if isinstance(X[feature].dtype, pd.CategoricalDtype):
+            raise ValueError(
+                f"{feature} must remain continuous, not categorical"
+            )
+
+    for feature in CATEGORICAL_FEATURES:
+        if feature not in X.columns:
+            raise ValueError(
+                f"Missing categorical feature {feature}"
+            )
+        if not isinstance(
+            X[feature].dtype,
+            pd.CategoricalDtype,
+        ):
+            raise ValueError(f"{feature} must be pandas categorical before LightGBM fitting")
 
 
 def config_hash(config: dict[str, object] | None = None) -> str:
@@ -85,9 +110,11 @@ def fit_binary_classifier(
     feature_names = tuple(X_train.columns)
     if tuple(X_val.columns) != feature_names:
         raise ValueError("X_train and X_val must share identical, identically-ordered columns")
+    _validate_feature_semantics(X_train)
+    _validate_feature_semantics(X_val)
 
-    train_set = lgb.Dataset(X_train, label=y_train, feature_name=list(feature_names), free_raw_data=False)
-    val_set = lgb.Dataset(X_val, label=y_val, feature_name=list(feature_names), reference=train_set, free_raw_data=False)
+    train_set = lgb.Dataset(X_train, label=y_train, feature_name=list(feature_names), categorical_feature=list(CATEGORICAL_FEATURES), free_raw_data=False)
+    val_set = lgb.Dataset(X_val, label=y_val, feature_name=list(feature_names), categorical_feature=list(CATEGORICAL_FEATURES), reference=train_set, free_raw_data=False)
 
     booster = lgb.train(
         effective_config,
@@ -111,6 +138,7 @@ def predict_probabilities(model: FittedBinaryClassifier, X) -> np.ndarray:
 
     if tuple(X.columns) != model.feature_names:
         raise ValueError("Prediction frame columns do not match the fitted model's feature_names")
+    _validate_feature_semantics(X)
     return np.asarray(model.booster.predict(X, num_iteration=model.best_iteration), dtype=np.float64)
 
 
@@ -179,7 +207,8 @@ def fit_regressor(
     frozen_hash = regression_config_hash(effective_config)
 
     feature_names = tuple(X_train.columns)
-    train_set = lgb.Dataset(X_train, label=y_train, feature_name=list(feature_names), free_raw_data=False)
+    _validate_feature_semantics(X_train)
+    train_set = lgb.Dataset(X_train, label=y_train, feature_name=list(feature_names), categorical_feature=list(CATEGORICAL_FEATURES), free_raw_data=False)
 
     booster = lgb.train(
         effective_config,
@@ -201,4 +230,5 @@ def predict_values(model: FittedRegressor, X) -> np.ndarray:
 
     if tuple(X.columns) != model.feature_names:
         raise ValueError("Prediction frame columns do not match the fitted model's feature_names")
+    _validate_feature_semantics(X)
     return np.asarray(model.booster.predict(X, num_iteration=model.num_boost_round), dtype=np.float64)

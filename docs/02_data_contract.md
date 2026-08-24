@@ -35,7 +35,7 @@ is permitted without that additional evidence.
 
 | Columns | Presence | Type/value contract | Role |
 |---|---|---|---|
-| `f0`–`f11` | required | Numeric; infinite values forbidden. Missingness is reported and handled only under a predeclared policy. | `X`, exactly in canonical numeric order. |
+| `f0`–`f11` | required | Numeric physical storage (`float64`); infinite values forbidden. Missingness is reported and handled only under a predeclared policy. **Physical storage type is not the same as semantic feature type** (D32): `f0`, `f2`, `f7`, `f10` are semantically continuous; `f1`, `f3`, `f4`, `f5`, `f6`, `f8`, `f9`, `f11` are semantically categorical anonymized tokens whose numeric magnitude carries no ordinal meaning, per the publisher's Table 2 and the official Criteo benchmark's `cat_features` list. Semantic type is never inferred from cardinality. | `X`, exactly in canonical column order. |
 | `treatment` | required | Complete binary values in `{0,1}`; labels are never silently remapped or imputed. | `T`, treatment assignment; forbidden from `X`. |
 | `conversion` | required | Complete binary values in `{0,1}`; labels are never silently remapped or imputed. | `Y`, primary outcome; forbidden from `X`. |
 | `visit` | optional | If used under D02, complete binary values in `{0,1}`; retained without using it to define `X`, `T`, primary `Y=conversion`, or the primary population. | Secondary robustness outcome; otherwise descriptive audit field. |
@@ -56,6 +56,39 @@ Any other mapping is a contract violation, not an experimental variant.
 while `visit` and `exposure` are treated conservatively as post-assignment
 variables. Primary-source definitions and timestamps are still required. This
 uncertainty strengthens, rather than relaxes, their exclusion from `X`.
+
+### Physical storage type vs. semantic feature type (D32)
+
+Every `f0`–`f11` column is stored physically as `float64`; that physical
+storage decision is unrelated to, and must not be read as evidence for, each
+feature's semantic type. Physical storage does not change under this
+distinction -- `f0`–`f11` remain `float64` in raw and processed Parquet.
+
+| Features | Physical storage | Semantic type |
+|---|---|---|
+| `f0`, `f2`, `f7`, `f10` | `float64` | Continuous |
+| `f1`, `f3`, `f4`, `f5`, `f6`, `f8`, `f9`, `f11` | `float64` numeric anonymized tokens | Categorical |
+
+The categorical group's numeric magnitude is an anonymization artifact, not an
+ordinal or interval quantity, and semantic type is never inferred from
+observed cardinality. This split is authoritative per the publisher's Table 2
+and the official Criteo benchmark implementation's `cat_features` list, and it
+governs estimator-specific representation:
+
+- LightGBM-family estimators (Response baseline, T-Learner, X-Learner nuisance
+  and effect models) use LightGBM's native train-fitted categorical
+  representation for the categorical group and plain `float64` for the
+  continuous group -- see [`src/preprocessing.py`](../src/preprocessing.py)'s
+  `LightGBMFeatureTransform`.
+- `econml.grf.CausalForest` has no equivalent native categorical
+  representation. It does not accept the raw categorical token columns
+  directly; an explicit CausalForest-specific encoding is a separate,
+  not-yet-accepted implementation decision (see
+  [ADR-CF-implementation](adr/ADR-CF-implementation.md)).
+- Balance/audit diagnostics (T03) compute standardized mean difference only
+  for the continuous group and a category-distribution diagnostic (total
+  variation distance) only for the categorical group; the two are never
+  combined into one joint statistic.
 
 ## Processed-data location and selection
 

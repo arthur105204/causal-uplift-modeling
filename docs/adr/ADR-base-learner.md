@@ -38,6 +38,19 @@ role, and does not authorize a held-out comparison. The exact LightGBM package,
 configuration, objectives, and serialization behavior remain
 `OPEN_FOR_SPRINT2`.
 
+## Feature representation contract (D32)
+
+Every LightGBM-family stage listed above consumes `f0`–`f11` under the
+publisher-defined feature semantics in
+[the data contract](../02_data_contract.md#physical-storage-type-vs-semantic-feature-type-d32):
+`f0`, `f2`, `f7`, `f10` stay `float64` continuous; `f1`, `f3`, `f4`, `f5`,
+`f6`, `f8`, `f9`, `f11` are cast to LightGBM's native, train-fitted
+categorical representation (`src/preprocessing.py`'s `LightGBMFeatureTransform`)
+before fitting or prediction. LightGBM's own native categorical support is
+what makes it viable for this mixed-type feature set without a separate
+encoding step; this does not extend to Causal Forest (see
+[ADR-CF-implementation](ADR-CF-implementation.md)).
+
 ## Objective contract
 
 - A model trained on factual binary `conversion` or another authorized binary

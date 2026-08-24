@@ -29,6 +29,8 @@ from sklearn.model_selection import StratifiedKFold
 
 from src.data import (
     AUDIT_ONLY_COLUMN,
+    CATEGORICAL_FEATURES,
+    CONTINUOUS_FEATURES,
     FEATURE_COLUMNS,
     FORBIDDEN_MODEL_COLUMNS,
     PRIMARY_OUTCOME,
@@ -41,11 +43,14 @@ from src.data import (
     write_json_new,
     write_text_new,
 )
+from src.preprocessing import LightGBMFeatureTransform
 
 
 ORDERING_CONTRACT_VERSION = "t03-canonical-source-row-v1"
 SEED_DERIVATION_VERSION = "numpy-seedsequence-pcg64-spawn-key-v1"
-EVIDENCE_SCHEMA_VERSION = "t03-evidence-v1"
+EVIDENCE_SCHEMA_VERSION = "t03-evidence-v2"
+CALIBRATION_CONTRACT_VERSION = "t03c-mixed-feature-v2"
+CALIBRATION_STATUS = "REOPENED_PENDING_MIXED_TYPE_SPEC"
 MASTER_PERMUTATION_SEED = 42
 FOLD_SEED = 42
 N_FOLDS = 5
@@ -819,9 +824,15 @@ def cross_fitted_treatment_predictability(
         validation_t = treatment[validation_mask]
         if set(np.unique(train_t).tolist()) != {0, 1}:
             raise AuditContractError(f"Fold {fold_id} training side lacks an assignment arm")
+        # Categorical vocabularies are fit on this fold's training side only and
+        # reused to transform its validation side -- the same OOF leakage
+        # boundary the fold split itself enforces (D32).
+        fold_transform = LightGBMFeatureTransform().fit(x.loc[training_mask])
+        x_train_fold = fold_transform.transform(x.loc[training_mask])
+        x_validation_fold = fold_transform.transform(x.loc[validation_mask])
         model = model_factory()
-        model.fit(x.loc[training_mask], train_t)
-        probabilities = np.asarray(model.predict_proba(x.loc[validation_mask]))
+        model.fit(x_train_fold, train_t)
+        probabilities = np.asarray(model.predict_proba(x_validation_fold))
         classes = np.asarray(model.classes_)
         class_one = np.flatnonzero(classes == 1)
         if len(class_one) != 1:
@@ -881,11 +892,18 @@ def smd_feature_record(
 ) -> dict[str, Any]:
     """Compute the frozen treated-minus-control SMD and companion diagnostics."""
 
+    if feature not in CONTINUOUS_FEATURES:
+        raise AuditContractError(
+            f"SMD is defined only for continuous features; got {feature!r}"
+        )
+
     assert_binary_complete(frame[treatment_column], treatment_column)
     control = frame.loc[frame[treatment_column] == 0, feature].dropna().to_numpy(dtype=np.float64)
     treated = frame.loc[frame[treatment_column] == 1, feature].dropna().to_numpy(dtype=np.float64)
     base = {
         "feature": feature,
+        "feature_type": "continuous",
+        "diagnostic_metric": "standardized_mean_difference",
         "control_nonmissing_n": int(len(control)),
         "treated_nonmissing_n": int(len(treated)),
         "control_missing_n": int((frame.loc[frame[treatment_column] == 0, feature].isna()).sum()),
@@ -973,27 +991,137 @@ def smd_feature_record(
     return record
 
 
+def categorical_balance_record(
+    frame: pd.DataFrame,
+    feature: str,
+    *,
+    treatment_column: str = TREATMENT_COLUMN,
+) -> dict[str, Any]:
+    """Compare category distributions between treatment arms."""
+
+    if feature not in CATEGORICAL_FEATURES:
+        raise AuditContractError(
+            f"Categorical balance is defined only for categorical features; "
+            f"got {feature!r}"
+        )
+
+    assert_binary_complete(
+        frame[treatment_column],
+        treatment_column,
+    )
+
+    control_values = frame.loc[frame[treatment_column] == 0, feature]
+    treated_values = frame.loc[frame[treatment_column] == 1, feature]
+
+    control_missing_n = int(control_values.isna().sum())
+    treated_missing_n = int(treated_values.isna().sum())
+
+    # Non-missing values only, matching smd_feature_record's exclusion of NaN
+    # from the statistic itself -- missingness is reported separately above.
+    control_distribution = control_values.dropna().value_counts(normalize=True)
+    treated_distribution = treated_values.dropna().value_counts(normalize=True)
+
+    categories = control_distribution.index.union(treated_distribution.index)
+
+    control_distribution = control_distribution.reindex(categories, fill_value=0.0)
+    treated_distribution = treated_distribution.reindex(categories, fill_value=0.0)
+
+    absolute_gap = (treated_distribution - control_distribution).abs()
+
+    return {
+        "feature": feature,
+        "feature_type": "categorical",
+        "diagnostic_metric": "category_distribution_distance",
+        "category_count": int(len(categories)),
+        "control_missing_n": control_missing_n,
+        "treated_missing_n": treated_missing_n,
+        "total_variation_distance": float(0.5 * absolute_gap.sum()),
+        "max_category_proportion_gap": float(absolute_gap.max()),
+    }
+
+
 def balance_diagnostics(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Compute all feature SMD records and the max-absolute eligible statistic."""
 
-    records = pd.DataFrame([smd_feature_record(frame, feature) for feature in FEATURE_COLUMNS])
-    invalid = records.loc[~records["calibration_valid"], "feature"].tolist()
-    if invalid:
-        raise AuditContractError(f"Balance calibration contains invalid features: {invalid}")
-    eligible = records.loc[records["eligible_for_max_abs_smd"]]
-    if eligible.empty:
-        raise AuditContractError("UNDEFINED_NO_ELIGIBLE_FEATURES")
-    maximum_row = eligible.loc[eligible["smd_absolute"].idxmax()]
+    continuous_records = [smd_feature_record(frame, feature) for feature in CONTINUOUS_FEATURES]
+    continuous_frame = pd.DataFrame(continuous_records)
+    invalid_continuous = continuous_frame.loc[
+        ~continuous_frame["calibration_valid"],
+        "feature",
+    ].tolist()
+    if invalid_continuous:
+        raise AuditContractError(
+            "Continuous balance diagnostic contain invalid feature: "
+            f"{invalid_continuous}"
+            )
+    eligible_continuous = continuous_frame.loc[
+        continuous_frame["eligible_for_max_abs_smd"]
+    ]
+    if eligible_continuous.empty:
+        raise AuditContractError("UNDEFINED_NO_ELIGIBLE_CONTINUOUS_FEATURES")
+    max_smd_row = eligible_continuous.loc[
+        eligible_continuous["smd_absolute"].idxmax()
+    ]
+    categorical_records = [
+        categorical_balance_record(frame, feature)
+        for feature in CATEGORICAL_FEATURES
+    ]
+
+    categorical_frame = pd.DataFrame(categorical_records)
+
+    max_tvd_row = categorical_frame.loc[
+        categorical_frame[
+            "total_variation_distance"
+        ].idxmax()
+    ]
+
+    records = pd.concat(
+        [continuous_frame, categorical_frame],
+        ignore_index=True,
+        sort=False,
+    )
     summary = {
-        "max_absolute_smd": float(maximum_row["smd_absolute"]),
-        "max_feature": str(maximum_row["feature"]),
-        "eligible_features": eligible["feature"].tolist(),
-        "excluded_global_constants": records.loc[
-            records["statistic_status"] == "UNDEFINED_GLOBAL_CONSTANT", "feature"
-        ].tolist(),
-        # The observed statistic is computed in T03-A; its disposition (INFO/WARNING/
-        # MATERIAL_CONCERN) requires the T03-C design-null calibrated percentiles.
-        "threshold_source": "DEFERRED_T03_C_DESIGN_CALIBRATION",
+        "continuous": {
+            "metric": "max_absolute_smd",
+            "value": float(
+                max_smd_row["smd_absolute"]
+            ),
+            "feature": str(
+                max_smd_row["feature"]
+            ),
+            "eligible_features": (
+                eligible_continuous["feature"].tolist()
+            ),
+            "excluded_global_constants": (
+                continuous_frame.loc[
+                    continuous_frame["statistic_status"]
+                    == "UNDEFINED_GLOBAL_CONSTANT",
+                    "feature",
+                ].tolist()
+            ),
+        },
+        "categorical": {
+            "metric": "max_total_variation_distance",
+            "value": float(
+                max_tvd_row[
+                    "total_variation_distance"
+                ]
+            ),
+            "feature": str(
+                max_tvd_row["feature"]
+            ),
+            "features": list(
+                CATEGORICAL_FEATURES
+            ),
+        },
+        "joint_calibration": {
+            "contract_version": (
+                CALIBRATION_CONTRACT_VERSION
+            ),
+            "status": CALIBRATION_STATUS,
+            "action_rule": None,
+            "threshold_source": None,
+        },
     }
     return records, summary
 

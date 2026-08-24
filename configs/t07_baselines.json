@@ -25,7 +25,7 @@
     "evidence_considered": [
       "D30: SMOKE -> [RESOURCE GATE(S) if required] -> FULL; RESOURCE gate count/rationale is a per-task judgment recorded before FULL, not a global constant",
       "T01 production evidence already proves the full-scale (~14M row) data-loading path has no resource failure",
-      "One Response LightGBM binary classifier over 12 numeric features is a small/medium regime for the library, not materially unproven or materially more complex than the already-validated T01 data path",
+      "One Response LightGBM binary classifier over the twelve publisher-defined features (4 continuous + 8 categorical, D32; LightGBM native categorical representation for the latter) is a small/medium regime for the library, not materially unproven or materially more complex than the already-validated T01 data path",
       "ADR-base-learner: objective=binary for factual-outcome models; no hyperparameter is contract-mandated beyond seed=42 and early_stopping_rounds<=50 (docs/06)"
     ],
     "decision": "SMOKE -> FULL. resource_gates = 0. smoke_size = 50000 total development rows (train+validation combined), a T07-local reproducibility/config value, not a global scale constant.",
@@ -61,5 +61,9 @@
   "lifecycle_state": "T07_SMOKE_IN_PROGRESS",
   "lifecycle_state_evidence": {
     "note": "Updated to T07_SMOKE_ACCEPTED / T07_FULL_ACCEPTED by later turns as evidence is produced; not set here in advance of execution."
+  },
+  "feature_semantics_stale_evidence_notice_D32": {
+    "date": "2026-08-24",
+    "reason": "outputs/runs/t07_smoke_20260818T105801Z_862229, outputs/runs/t07_smoke_20260818T111252Z_867633, outputs/runs/t07_full_20260818T111446Z_593205, and outputs/runs/t07_audit_erratum_20260818T150917Z_995999 fit the Response LightGBM classifier against the frozen T04 v1 no-op preprocessing output (all twelve features as plain float64, no categorical_feature declared to LightGBM). Per D32, f1/f3/f4/f5/f6/f8/f9/f11 are categorical tokens; that representation is STALE_FEATURE_REPRESENTATION. These immutable run artifacts are not modified or deleted, but they cannot authorize a current T07 model and must not be cited as current evidence. A corrected development rerun against LightGBMFeatureTransform (T04 v2) is required before any current T07 claim."
   }
 }

@@ -25,6 +25,33 @@ This ADR implements those accepted decisions. It does not defer, omit, or
 redefine Causal Forest itself. Causal Forest remains planned for Sprint 2 and is
 not part of Sprint 1 model execution.
 
+- D32 fixes a feature-semantics bug affecting this estimator specifically:
+  `f1`/`f3`/`f4`/`f5`/`f6`/`f8`/`f9`/`f11` are categorical tokens (physically
+  `float64`, semantically categorical), not ordered continuous quantities --
+  see [the data contract](../02_data_contract.md#physical-storage-type-vs-semantic-feature-type-d32).
+  `econml.grf.CausalForest` has no native categorical representation
+  equivalent to LightGBM's, so `src/causal_forest_baseline.py`'s
+  `fit_causal_forest()` now fails closed on any raw categorical token column.
+  D32 does **not** select a CausalForest encoding (ordinal/one-hot/hashing/
+  target-encoding/etc.) -- that selection is this ADR's responsibility, not
+  yet made. See "Feature-representation status" below.
+
+## Feature-representation status (D32)
+
+**BLOCKED_PENDING_MIXED_TYPE_SPEC.** No CausalForest-specific categorical
+encoding has been selected. Any Causal Forest fit that was previously
+performed against the raw twelve-column `float64` frame (including prior T10
+resource/correctness evidence and any T11 fit) treated categorical tokens as
+ordered continuous quantities and is **stale feature-representation
+evidence** -- retained as historical record, not reusable to authorize a
+current model. Encoding selection requires its own evaluation of at least:
+memory/runtime impact at the ~9.8M-row FULL scale (D31), interaction with the
+honesty/support diagnostics below, and whether the encoding is fit train-only
+and reused without refitting on validation/held-out. No encoding is chosen by
+default and none is implied by the official Criteo benchmark's own
+hashing/one-hot preprocessing, which is evidence about their benchmark, not an
+automatic authorization for this project's `econml.grf.CausalForest` usage.
+
 ## Provisional implementation decision
 
 Select the exact Causal Forest implementation during Sprint 2 using the criteria
@@ -48,8 +75,11 @@ first and document:
    variance or interval estimates actually claimed;
 4. deterministic seeds, parallelism controls, serialization, reload equivalence,
    and exact prediction/artifact schemas;
-5. compatibility with numeric `f0`–`f11`, missing-value policy, source-row
-   identity, and the frozen train/validation/test boundary;
+5. an explicit, separately-justified categorical-token encoding for `f1`/
+   `f3`/`f4`/`f5`/`f6`/`f8`/`f9`/`f11` (not assumed compatible as raw numeric
+   input; see "Feature-representation status" above), the continuous
+   `f0`/`f2`/`f7`/`f10` handling, missing-value policy, source-row identity,
+   and the frozen train/validation/test boundary;
 6. feasibility at the applicable D30 SMOKE, RESOURCE gate(s), and full-data
    scale gates; and
 7. license, maintenance, runtime, peak memory, and integration cost.
@@ -66,6 +96,15 @@ Causal Forest may enter held-out evaluation only after all gates have been
 evaluated and documented using synthetic or permitted development data before
 test release:
 
+0. **Feature-representation gate (D32):** select and record an explicit
+   categorical-token encoding for `f1`/`f3`/`f4`/`f5`/`f6`/`f8`/`f9`/`f11`
+   under its own justification (not inherited from the official Criteo
+   benchmark's preprocessing, and not an ordinal/one-hot/hashing/
+   target-encoding default chosen without comparison); verify it is fit
+   train-only and reused unchanged on validation/held-out, exactly as
+   `LightGBMFeatureTransform` already requires for LightGBM-family stages.
+   `fit_causal_forest()` fails closed on the raw categorical frame until this
+   gate is passed -- see "Feature-representation status" above.
 1. **Correctness gate:** pin implementation/version/configuration and verify the
    exact `X/T/Y` contract, treatment coding, finite CATE scores, and metric input
    schema.
