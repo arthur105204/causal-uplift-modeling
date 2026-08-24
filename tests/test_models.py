@@ -51,8 +51,8 @@ def test_t_learner_recovers_negative_uplift_sign() -> None:
 
 def test_x_learner_predict_tau_has_correct_shape_and_is_finite() -> None:
     raw, T, Y = _synthetic(rows=300, seed=3, true_effect=0.3)
+    learner = fit_x_learner(raw, T, Y)  # fit_x_learner takes the RAW frame; it fits its own fold-local transforms
     X = _lightgbm_features(raw)[0]
-    learner = fit_x_learner(X, T, Y)
     tau_hat = learner.predict_tau(X)
     assert len(tau_hat) == len(X)
     assert np.isfinite(tau_hat).all()
@@ -60,9 +60,19 @@ def test_x_learner_predict_tau_has_correct_shape_and_is_finite() -> None:
 
 def test_x_learner_g_is_empirical_treatment_rate() -> None:
     raw, T, Y = _synthetic(rows=200, seed=4, true_effect=0.2)
-    X = _lightgbm_features(raw)[0]
-    learner = fit_x_learner(X, T, Y)
+    learner = fit_x_learner(raw, T, Y)
     assert learner.g == pytest.approx(float(np.mean(T == 1)), abs=1e-9)
+
+
+def test_x_learner_rejects_pre_transformed_frame() -> None:
+    """fit_x_learner must receive the RAW frame -- passing an already
+    globally-transformed frame would silently reintroduce the fold-local
+    preprocessing bug (global vocabulary leaking across the fold boundary)."""
+
+    raw, T, Y = _synthetic(rows=200, seed=7, true_effect=0.2)
+    X = _lightgbm_features(raw)[0]  # pre-transformed: categorical dtype columns, no f-column float64 raw form
+    with pytest.raises((KeyError, ValueError, AttributeError, TypeError)):
+        fit_x_learner(X, T, Y)
 
 
 def test_causal_forest_rejects_raw_categorical_columns() -> None:

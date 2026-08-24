@@ -17,6 +17,7 @@ from econml.grf import CausalForest
 from sklearn.model_selection import train_test_split
 
 from src.data import CATEGORICAL_FEATURES
+from src.preprocessing import LightGBMFeatureTransform
 
 # ---------------------------------------------------------------------------
 # LightGBM fitting primitives (shared by the response model, T-Learner, and
@@ -105,12 +106,19 @@ def fit_t_learner(X_train, T_train, Y_train, X_val, T_val, Y_val, *, seed: int =
 
 
 # ---------------------------------------------------------------------------
-# X-Learner. The nuisance models (mu0/mu1) MUST be fit fold-locally: the
-# training population is split into two folds, and every row's out-of-fold
-# nuisance prediction comes from the model fit on the OPPOSITE fold. Fitting
-# mu0/mu1 on the whole training set and scoring the same rows (no fold split)
-# leaks each row's own outcome into its own pseudo-outcome target -- this was
-# a real bug in this project, fixed by making the split fold-local.
+# X-Learner. Two things must be fold-local, not just one:
+#   1. the nuisance models (mu0/mu1) -- every row's out-of-fold nuisance
+#      prediction must come from a model fit on the OPPOSITE fold, or a row's
+#      own outcome leaks into its own pseudo-outcome target;
+#   2. the categorical feature transform (LightGBMFeatureTransform) each
+#      nuisance model is trained under -- fitting ONE transform on the whole
+#      train partition and reusing it for both folds lets each fold's
+#      categorical vocabulary be informed by the opposite fold's own category
+#      values. This was a real bug in this project (see README's Methodology
+#      notes), fixed by giving each fold its own fold-local transform, fit
+#      only on that fold's own raw training rows.
+# The effect stage (tau1/tau0) has no cross-fitting boundary to violate: its
+# transform is fit once on the whole raw train partition, same as T-Learner.
 # ---------------------------------------------------------------------------
 
 
@@ -126,39 +134,83 @@ class XLearner:
         return self.g * tau0_hat + (1.0 - self.g) * tau1_hat
 
 
-def fit_x_learner(X_train, T_train, Y_train, *, seed: int = 42) -> XLearner:
-    strata = pd.Series(T_train).astype(str) + "_" + pd.Series(Y_train).astype(str)
-    idx = np.arange(len(X_train))
-    fold_a, fold_b = train_test_split(idx, train_size=0.5, random_state=seed, stratify=strata)
+def _require_raw_features(frame) -> None:
+    already_categorical = [
+        feature
+        for feature in CATEGORICAL_FEATURES
+        if feature in getattr(frame, "columns", ()) and isinstance(frame[feature].dtype, pd.CategoricalDtype)
+    ]
+    if already_categorical:
+        raise ValueError(
+            f"fit_x_learner received an already-transformed frame (categorical dtype on "
+            f"{already_categorical}); pass the RAW f0..f11 frame instead -- fit_x_learner fits "
+            "its own fold-local LightGBMFeatureTransform internally, and reusing a globally-fit "
+            "transform here would silently reintroduce the fold-local preprocessing bug"
+        )
 
-    def _fit_arms(fold_idx):
-        X_f, T_f, Y_f = X_train.iloc[fold_idx], np.asarray(T_train)[fold_idx], np.asarray(Y_train)[fold_idx]
-        treated, control = T_f == 1, T_f == 0
-        mu1 = fit_classifier(X_f[treated], Y_f[treated], X_f[treated], Y_f[treated], seed=seed)
-        mu0 = fit_classifier(X_f[control], Y_f[control], X_f[control], Y_f[control], seed=seed)
-        return mu1, mu0
 
-    mu1_a, mu0_a = _fit_arms(fold_a)
-    mu1_b, mu0_b = _fit_arms(fold_b)
+def fit_x_learner(raw_train_frame, T_train, Y_train, *, seed: int = 42) -> XLearner:
+    """raw_train_frame: the RAW (untransformed) f0..f11 frame -- NOT the
+    output of a globally-fit LightGBMFeatureTransform. This function fits its
+    own fold-local transforms internally; passing an already-transformed
+    frame would silently reintroduce the fold-local preprocessing bug."""
 
-    # Opposite-fold scoring: fold A rows are scored by the fold-B models, and
-    # vice versa -- this is what makes the OOF nuisance predictions leak-free.
-    mu0_oof = np.empty(len(X_train), dtype=np.float64)
-    mu1_oof = np.empty(len(X_train), dtype=np.float64)
-    mu0_oof[fold_a] = predict(mu0_b, X_train.iloc[fold_a])
-    mu1_oof[fold_a] = predict(mu1_b, X_train.iloc[fold_a])
-    mu0_oof[fold_b] = predict(mu0_a, X_train.iloc[fold_b])
-    mu1_oof[fold_b] = predict(mu1_a, X_train.iloc[fold_b])
-
+    _require_raw_features(raw_train_frame)
     T_arr = np.asarray(T_train, dtype=np.float64)
     Y_arr = np.asarray(Y_train, dtype=np.float64)
-    treated_mask, control_mask = T_arr == 1, T_arr == 0
+    strata = pd.Series(T_arr).astype(str) + "_" + pd.Series(Y_arr).astype(str)
+    idx = np.arange(len(raw_train_frame))
+    fold_a, fold_b = train_test_split(idx, train_size=0.5, random_state=seed, stratify=strata)
 
+    def _fit_arm_with_early_stopping(X_arm, Y_arm):
+        # Early-stopping validation must be a genuine held-out slice, not the
+        # arm's own training rows -- fitting and early-stopping against the
+        # same rows lets LightGBM chase training loss to the round cap
+        # (near-zero training logloss, no real stopping signal), which both
+        # wastes compute and can degrade the OOF pseudo-outcome quality this
+        # nuisance stage feeds into.
+        inner_idx = np.arange(len(X_arm))
+        inner_train, inner_val = train_test_split(inner_idx, test_size=0.2, random_state=seed, stratify=Y_arm)
+        return fit_classifier(
+            X_arm.iloc[inner_train], Y_arm[inner_train], X_arm.iloc[inner_val], Y_arm[inner_val], seed=seed
+        )
+
+    def _fit_fold(fold_idx):
+        raw_fold = raw_train_frame.iloc[fold_idx]
+        transform = LightGBMFeatureTransform().fit(raw_fold)
+        X_fold = transform.transform(raw_fold)
+        T_f, Y_f = T_arr[fold_idx], Y_arr[fold_idx]
+        treated, control = T_f == 1, T_f == 0
+        mu1 = _fit_arm_with_early_stopping(X_fold[treated], Y_f[treated])
+        mu0 = _fit_arm_with_early_stopping(X_fold[control], Y_f[control])
+        return mu1, mu0, transform
+
+    mu1_a, mu0_a, transform_a = _fit_fold(fold_a)
+    mu1_b, mu0_b, transform_b = _fit_fold(fold_b)
+
+    # Opposite-fold scoring: fold A rows are transformed by fold B's own
+    # fold-local vocabulary and scored by fold B's models, and vice versa --
+    # this keeps both the model AND its feature representation leak-free
+    # across the cross-fitting boundary.
+    mu0_oof = np.empty(len(raw_train_frame), dtype=np.float64)
+    mu1_oof = np.empty(len(raw_train_frame), dtype=np.float64)
+    X_a_by_b = transform_b.transform(raw_train_frame.iloc[fold_a])
+    X_b_by_a = transform_a.transform(raw_train_frame.iloc[fold_b])
+    mu0_oof[fold_a] = predict(mu0_b, X_a_by_b)
+    mu1_oof[fold_a] = predict(mu1_b, X_a_by_b)
+    mu0_oof[fold_b] = predict(mu0_a, X_b_by_a)
+    mu1_oof[fold_b] = predict(mu1_a, X_b_by_a)
+
+    treated_mask, control_mask = T_arr == 1, T_arr == 0
     d1 = Y_arr[treated_mask] - mu0_oof[treated_mask]
     d0 = mu1_oof[control_mask] - Y_arr[control_mask]
 
-    tau1 = fit_regressor(X_train[treated_mask], d1, seed=seed)
-    tau0 = fit_regressor(X_train[control_mask], d0, seed=seed)
+    # Effect-stage transform: fit once on the whole raw train partition --
+    # this stage has no cross-fitting boundary, so a global fit is correct.
+    effect_transform = LightGBMFeatureTransform().fit(raw_train_frame)
+    X_effect = effect_transform.transform(raw_train_frame)
+    tau1 = fit_regressor(X_effect[treated_mask], d1, seed=seed)
+    tau0 = fit_regressor(X_effect[control_mask], d0, seed=seed)
     g = float(np.mean(T_arr == 1))  # this project's design has no documented covariate-varying propensity
     return XLearner(tau1=tau1, tau0=tau0, g=g)
 
