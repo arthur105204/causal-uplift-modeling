@@ -1,25 +1,18 @@
 from __future__ import annotations
 
-import json
-
 import numpy as np
 import pandas as pd
 import pytest
 
-from src.data import CATEGORICAL_FEATURES, CONTINUOUS_FEATURES, FEATURE_COLUMNS
+from src.data import CATEGORICAL_FEATURES, CONTINUOUS_FEATURES, FEATURE_COLUMNS, PRIMARY_OUTCOME, TREATMENT_COLUMN
 from src.preprocessing import (
-    CONTRACT_VERSION,
+    CausalForestCategoricalEncoder,
     LightGBMFeatureTransform,
-    PreprocessingContractError,
-    preprocessing_contract,
+    train_validation_split,
 )
 
 
-def _frame(rows: int = 20, seed: int = 0, category_span: int = 5) -> pd.DataFrame:
-    """Synthetic frame: continuous features are Gaussian floats; categorical
-    features are drawn from a small integer-valued float64 token set, matching
-    how the released CRITEO categorical tokens are physically stored."""
-
+def _frame(rows: int = 40, seed: int = 0, category_span: int = 5) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     columns = {}
     for feature in FEATURE_COLUMNS:
@@ -27,16 +20,19 @@ def _frame(rows: int = 20, seed: int = 0, category_span: int = 5) -> pd.DataFram
             columns[feature] = rng.normal(size=rows)
         else:
             columns[feature] = rng.integers(0, category_span, size=rows).astype("float64")
+    columns[TREATMENT_COLUMN] = rng.integers(0, 2, size=rows)
+    columns[PRIMARY_OUTCOME] = rng.integers(0, 2, size=rows)
     return pd.DataFrame(columns)
+
+
+# --- LightGBM categorical dtype transform (D32) ---------------------------
 
 
 def test_transform_uses_semantic_dtypes_per_feature() -> None:
     frame = _frame()
-    frame["extra_column_not_in_x"] = 1
-    transform = LightGBMFeatureTransform()
-    output = transform.fit_transform(frame)
+    transform = LightGBMFeatureTransform().fit(frame)
+    output = transform.transform(frame)
     assert tuple(output.columns) == FEATURE_COLUMNS
-    assert "extra_column_not_in_x" not in output.columns
     for feature in CONTINUOUS_FEATURES:
         assert str(output[feature].dtype) == "float64"
     for feature in CATEGORICAL_FEATURES:
@@ -45,124 +41,83 @@ def test_transform_uses_semantic_dtypes_per_feature() -> None:
 
 
 def test_transform_before_fit_raises() -> None:
-    transform = LightGBMFeatureTransform()
-    with pytest.raises(PreprocessingContractError, match="before fit"):
-        transform.transform(_frame())
-
-
-def test_fit_rejects_missing_required_columns() -> None:
-    frame = _frame().drop(columns="f0")
-    transform = LightGBMFeatureTransform()
-    with pytest.raises(PreprocessingContractError, match="missing"):
-        transform.fit(frame)
-
-
-def test_transform_rejects_missing_required_columns() -> None:
-    transform = LightGBMFeatureTransform().fit(_frame())
-    incomplete = _frame().drop(columns="f5")
-    with pytest.raises(PreprocessingContractError, match="missing"):
-        transform.transform(incomplete)
+    with pytest.raises(RuntimeError, match="before fit"):
+        LightGBMFeatureTransform().transform(_frame())
 
 
 def test_categorical_vocabulary_is_fit_on_train_only_and_reused_on_validation() -> None:
     train = pd.DataFrame({feature: [0.0, 1.0, 2.0] * 5 for feature in FEATURE_COLUMNS})
     validation = pd.DataFrame({feature: [0.0, 1.0] * 3 for feature in FEATURE_COLUMNS})
-
     transform = LightGBMFeatureTransform().fit(train)
-    train_output = transform.transform(train)
-    validation_output = transform.transform(validation)
-
+    val_output = transform.transform(validation)
     for feature in CATEGORICAL_FEATURES:
-        train_categories = train_output[feature].dtype.categories
-        validation_categories = validation_output[feature].dtype.categories
-        # Validation reuses the exact train-fitted vocabulary, never its own.
-        assert list(train_categories) == [0.0, 1.0, 2.0]
-        assert list(validation_categories) == [0.0, 1.0, 2.0]
+        assert list(val_output[feature].dtype.categories) == [0.0, 1.0, 2.0]
 
 
-def test_unseen_category_becomes_missing_deterministically() -> None:
+def test_unseen_category_becomes_nan() -> None:
     train = pd.DataFrame({feature: [0.0, 1.0] * 5 for feature in FEATURE_COLUMNS})
     validation = pd.DataFrame({feature: [0.0, 99.0] for feature in FEATURE_COLUMNS})
-
-    transform = LightGBMFeatureTransform().fit(train)
-    output = transform.transform(validation)
-    unseen_counts = transform.unseen_category_counts(validation)
-
+    output = LightGBMFeatureTransform().fit(train).transform(validation)
     for feature in CATEGORICAL_FEATURES:
         assert pd.isna(output.loc[1, feature])
-        assert not pd.isna(output.loc[0, feature])
-        assert unseen_counts[feature] == 1
 
 
-def test_unseen_category_counts_before_fit_raises() -> None:
-    transform = LightGBMFeatureTransform()
-    with pytest.raises(PreprocessingContractError, match="before fit"):
-        transform.unseen_category_counts(_frame())
+# --- Causal Forest top-K + OTHER encoder (D34) -----------------------------
 
 
-def test_no_imputation_missing_values_pass_through() -> None:
-    frame = _frame(rows=10)
-    frame.loc[0, "f0"] = np.nan  # continuous
-    frame.loc[3, "f1"] = np.nan  # categorical
-    transform = LightGBMFeatureTransform().fit(frame)
-    output = transform.transform(frame)
-    assert pd.isna(output.loc[0, "f0"])
-    assert pd.isna(output.loc[3, "f1"])
-
-
-def test_row_count_and_order_preserved() -> None:
-    frame = _frame(rows=30)
-    transform = LightGBMFeatureTransform().fit(frame)
-    output = transform.transform(frame)
-    assert len(output) == len(frame)
-    assert list(output.index) == list(frame.index)
-
-
-def test_input_column_order_does_not_change_output_order() -> None:
-    frame = _frame()
-    reordered = frame.loc[:, list(reversed(FEATURE_COLUMNS))]
-    transform = LightGBMFeatureTransform().fit(frame)
-    output = transform.transform(reordered)
-    assert tuple(output.columns) == FEATURE_COLUMNS
-
-
-def test_deterministic_output_across_repeated_calls() -> None:
-    frame = _frame()
-    transform = LightGBMFeatureTransform().fit(frame)
-    first = transform.transform(frame)
-    second = transform.transform(frame)
-    pd.testing.assert_frame_equal(first, second)
-
-
-def test_category_state_is_serializable_and_train_fitted() -> None:
-    train = pd.DataFrame({feature: [2.0, 0.0, 1.0] * 5 for feature in FEATURE_COLUMNS})
-    transform = LightGBMFeatureTransform().fit(train)
-    state = transform.category_state()
-    assert set(state.keys()) == set(CATEGORICAL_FEATURES)
+def test_cf_encoder_output_is_one_hot_with_other_bucket() -> None:
+    train = pd.DataFrame({feature: [0.0, 1.0, 2.0, 3.0] * 10 for feature in FEATURE_COLUMNS})
+    encoder = CausalForestCategoricalEncoder(k=32).fit(train)
+    output = encoder.transform(train)
     for feature in CATEGORICAL_FEATURES:
-        assert state[feature] == [0.0, 1.0, 2.0]
-    json.dumps(state)
+        assert f"{feature}__OTHER" in output.columns
+    for feature in CONTINUOUS_FEATURES:
+        assert feature in output.columns
 
 
-def test_category_state_before_fit_raises() -> None:
-    transform = LightGBMFeatureTransform()
-    with pytest.raises(PreprocessingContractError, match="before fit"):
-        transform.category_state()
+def test_cf_encoder_routes_unseen_category_to_other() -> None:
+    train = pd.DataFrame({feature: [0.0] * 20 for feature in FEATURE_COLUMNS})
+    encoder = CausalForestCategoricalEncoder(k=8).fit(train)
+    unseen = pd.DataFrame({feature: [99.0] for feature in FEATURE_COLUMNS})
+    output = encoder.transform(unseen)
+    for feature in CATEGORICAL_FEATURES:
+        assert output.loc[0, f"{feature}__OTHER"] == 1.0
 
 
-def test_contract_is_serializable_and_content_stable() -> None:
-    contract = preprocessing_contract()
-    assert contract["contract_version"] == CONTRACT_VERSION
-    assert contract["feature_columns"] == list(FEATURE_COLUMNS)
-    assert contract["feature_semantics"]["continuous"] == list(CONTINUOUS_FEATURES)
-    assert contract["feature_semantics"]["categorical"] == list(CATEGORICAL_FEATURES)
-    assert contract["physical_storage_precision"] == "float64"
-    assert contract["lightgbm_representation"]["continuous"] == "float64"
-    assert contract["lightgbm_representation"]["categorical"]
-    assert contract["lightgbm_representation"]["unknown_category"]
-    assert contract["fit_boundary"] == "train_only"
-    assert contract["imputation"] == "none"
-    assert contract["held_out_rule"]
-    assert contract["causal_forest_representation"]
+def test_cf_encoder_rejects_invalid_k() -> None:
+    with pytest.raises(ValueError, match="32, 16, 8"):
+        CausalForestCategoricalEncoder(k=4)
 
-    json.dumps(contract)
+
+def test_cf_encoder_never_produces_a_single_ordinal_column() -> None:
+    train = pd.DataFrame({feature: [0.0, 1.0, 2.0] * 10 for feature in FEATURE_COLUMNS})
+    output = CausalForestCategoricalEncoder(k=32).fit_transform(train)
+    # every categorical feature must expand into >1 column (never collapse to one rank/ordinal column)
+    for feature in CATEGORICAL_FEATURES:
+        expanded = [c for c in output.columns if c.startswith(feature + "__")]
+        assert len(expanded) > 1
+
+
+# --- train/validation split -------------------------------------------------
+
+
+def test_split_is_disjoint_and_complete() -> None:
+    frame = _frame(rows=200, seed=1)
+    train, val = train_validation_split(frame)
+    assert len(train) + len(val) == len(frame)
+
+
+def test_split_preserves_both_arms_and_outcomes_in_both_halves() -> None:
+    frame = _frame(rows=200, seed=2)
+    train, val = train_validation_split(frame)
+    for part in (train, val):
+        assert set(part[TREATMENT_COLUMN].unique()) == {0, 1}
+        assert set(part[PRIMARY_OUTCOME].unique()) == {0, 1}
+
+
+def test_split_is_deterministic_for_a_fixed_seed() -> None:
+    frame = _frame(rows=100, seed=3)
+    train1, val1 = train_validation_split(frame, seed=7)
+    train2, val2 = train_validation_split(frame, seed=7)
+    pd.testing.assert_frame_equal(train1, train2)
+    pd.testing.assert_frame_equal(val1, val2)

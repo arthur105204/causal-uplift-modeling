@@ -2,28 +2,15 @@
 
 Guidance for Claude Code in this repository.
 
-## Read this first
+## What this is
 
-Read `AGENTS.md` before any non-trivial work — it is the authoritative
-operating contract (authority order, frozen foundations, Kaggle execution
-model, feature-semantics rule, lifecycle, verification, review, and hygiene
-rules). This file does not duplicate it.
-
-## Authority hierarchy
-
-Follow `AGENTS.md` §1. When sources conflict: `docs/decision_register.csv` >
-frozen contracts/specs (`docs/01`-`docs/07`) and accepted ADRs > accepted
-empirical evidence > GitHub Issue wording > existing implementation. Use
-`docs/index.md` to locate the current contract for any question; use
-`docs/decision_register.csv` for owner-approved decisions (in Vietnamese).
-
-## Execution model
-
-GitHub Issues define execution tasks — MASTER #20 is the current plan.
-Kaggle is the primary heavy-compute environment; a full pipeline may span
-multiple Kaggle sessions connected by immutable artifacts under
-`outputs/runs/<run_id>/`. Local execution is for editing, unit tests, and
-small/synthetic verification.
+A Kaggle/data-science portfolio project: causal uplift modeling on
+CRITEO-UPLIFTv2.1. See `README.md` for the research objective, repository
+structure, and the "Methodology notes" section for the modeling decisions that
+matter (D32 categorical feature handling, X-Learner fold-local preprocessing,
+Causal Forest categorical encoding). `archive/` holds the fuller original
+rationale for anyone who wants the full derivation; it's historical reference,
+not a live contract.
 
 ## Commands
 
@@ -38,13 +25,16 @@ does not. Run everything from the repository root so `src.*` resolves on
 .venv\Scripts\jupyter.exe lab                                      # notebooks
 ```
 
-There is no linter or formatter. Tests are a regression aid, not the
-verification gate — see `AGENTS.md` §11.
+There is no linter or formatter.
 
 ## Working rules
 
-One writer per working tree; keep parallel agent work isolated to its own
-branch/worktree (`AGENTS.md` §14). Do not auto-advance lifecycle phases — the
-user controls transitions (`AGENTS.md` §6). Do not access held-out data or
-results before T17 authorization (`AGENTS.md` §9). Never `git add .`; never
-commit raw/processed data or `outputs/` artifacts.
+- Keep `X = f0..f11` (canonical order), `T = treatment`, primary `Y =
+  conversion` as-is — these are the dataset's causal contract, not
+  implementation details to refactor away.
+- Don't reintroduce the categorical-as-continuous bug (D32) or fit
+  preprocessing globally instead of fold-locally in the X-Learner (see
+  README's Methodology notes) — both were real bugs found and fixed here.
+- Never commit raw/processed data (`data/raw/`, `data/processed/`) or notebook
+  output artifacts.
+- Don't `git add .` — stage files explicitly.

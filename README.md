@@ -1,146 +1,147 @@
 # CRITEO-UPLIFTv2.1 causal uplift modeling
 
-## Project status
-
-This project develops causal uplift models on CRITEO-UPLIFTv2.1 through a fixed
-sequence of public Kaggle notebooks (`kaggle/01_data_understanding.ipynb` through
-`kaggle/04_final_evaluation.ipynb`) that tell the data-science story; GitHub
-Issues remain the internal execution/task system the notebooks draw on — the
-two are deliberately not a 1:1 mirror. The causal, data, audit, methodology, experiment,
-metric, and artifact contracts in `docs/` are frozen. Current task status and the
-execution plan are tracked live in GitHub Issues, with
-[Issue #20](https://github.com/arthur105204/causal-uplift-modeling/issues/20)
-(`[MASTER]`) as the authoritative overview — that is the source of truth for what
-is complete, in progress, or pending, rather than this file. No model training,
-split construction, or held-out evaluation is authorized before its predecessor
-tasks in that plan are complete.
+A Kaggle-first, notebook-driven comparison of causal uplift models on the
+**CRITEO-UPLIFTv2.1** advertising benchmark: a response-model baseline,
+T-Learner, X-Learner, and Causal Forest, evaluated on incremental-conversion
+ranking (Qini / uplift@K) rather than plain response prediction.
 
 ## Research objective
 
-This project is a controlled empirical comparison of selected causal-uplift
-implementations under one common large-scale randomized advertising benchmark
-(CRITEO-UPLIFTv2.1) and one fixed experimental protocol (D33). It is **not**
-an attempt to identify a universally best CATE/uplift algorithm.
-
 A response model asks *who is likely to convert*; the uplift models compared
-here instead ask *where treatment changes conversion* — ranking eligible
-observations by the conditional effect of treatment assignment on
-`conversion`, rather than by response probability alone. The compared
-portfolio is the theoretical random reference, a Response LightGBM comparator,
-T-Learner, X-Learner, and Causal Forest, on a common validation cohort and one
-frozen held-out evaluation. `conversion` is the primary outcome; when present
-and schema-valid, `visit` is a secondary outcome that cannot change primary
-selection or claims.
+here instead ask *where treatment changes conversion* — ranking observations
+by the conditional effect of treatment assignment on `conversion`, rather than
+by response probability alone.
 
-Conclusions are explicitly dataset-specific, implementation-specific,
-protocol-specific, and metric-specific: a valid conclusion has the form "among
-the evaluated implementations, estimator A achieved stronger held-out
-uplift-ranking / treatment-allocation performance under the frozen
-CRITEO-UPLIFTv2.1 protocol" — not a claim that one estimator is universally
-better, that observed performance is intrinsic to a meta-learner family, or
-that observed superiority explains *why* an estimator is theoretically better.
-
-## Causal contract summary
-
-- `X` is exactly the ordered feature set `f0` through `f11`.
-- `T` is binary `treatment` assignment.
-- Primary `Y` is binary `conversion`; optional secondary `Y` is `visit` in a
-  separate outcome pipeline.
-- `exposure` is treated conservatively as post-assignment and is prohibited from
-  primary `X`, eligibility, population filtering, and the primary treatment
-  definition.
-- The primary estimand is assignment/intention-to-treat CATE for ranking over
-  the eligible released population. Predicted uplift is not an observed true
-  individual treatment effect.
-
-The authoritative definitions and limitations are in the
-[causal contract](docs/01_causal_contract.md) and
-[data contract](docs/02_data_contract.md).
-
-## Estimator scope
-
-The specified comparison portfolio contains:
-
-- a theoretical/seeded random ranking reference;
-- a response-model baseline, which is not a causal estimator;
-- T-Learner as the required primary causal baseline;
-- X-Learner as an accepted main comparator;
-- Causal Forest as an accepted main comparator planned for Sprint 2, with a
-  provisional exact implementation; and
-- DR-Learner as a conditional stretch comparator that enters held-out evaluation
-  only if every development-only promotion gate passes before freeze.
-
-S-Learner is deferred. No estimator is declared the winner in advance, and no
-implementation status may silently redefine an owner-approved estimator role.
-See the [methodology scope](docs/05_methodology_scope.md).
-
-## Evaluation scope
-
-The primary ranking statistic is Qini above the theoretical expected-random
-reference under the exact convention in the
-[metric specification](docs/07_metric_specification.md). Raw Qini area and fixed
-`uplift@K`/incremental-conversion summaries have their documented secondary and
-decision roles. The repository does not report empirical PEHE against true ITE
-on real CRITEO-UPLIFTv2.1 because both potential outcomes are not observed.
-
-Training and validation support development, early stopping, selection,
-robustness, and promotion. The held-out test is used once only after the
-[experiment protocol](docs/06_experiment_protocol.md) records a valid pre-test
-freeze. Test information cannot select data handling, diagnostics, estimators,
-hyperparameters, seeds, ranking rules, or claims.
+Conclusions here are dataset-specific, implementation-specific, and
+metric-specific: a valid conclusion has the form "among the evaluated
+implementations, estimator A achieved stronger validation uplift-ranking
+performance on CRITEO-UPLIFTv2.1" — not a claim that one estimator is
+universally better, or that observed performance is intrinsic to a
+meta-learner family in general.
 
 ## Repository structure
 
 ```text
-kaggle/            public Kaggle notebook story (01 data understanding through 04 final evaluation)
-notebooks/internal/  heavy or held-out-sensitive computation; not reader-facing
-notebooks/legacy/     retained prior evidence, kept for provenance; inherited, not re-derived
-configs/            non-secret example manifests/configurations
-data/               local raw and processed data; only data/README.md is versioned
-docs/               decision register, specifications, ADRs, and historical Sprint 1 records
-outputs/            immutable run-scoped machine-readable empirical evidence; ignored by Git
-src/                optional reusable machinery when concretely justified
-tests/              optional or task-required automated regression verification when justified
-scripts/            optional supporting automation when concretely justified
-archive/            historical local material; ignored and non-authoritative
+data/
+└── README.md              expected local layout; data itself is not versioned
+
+notebooks/
+├── 01_data_processing.ipynb   load CSV, validate shape, define X/T/Y, train/val split
+├── 02_baseline_models.ipynb   LightGBM response model (non-causal baseline)
+├── 03_uplift_models.ipynb     T-Learner, X-Learner
+└── 04_causal_forest.ipynb     Causal Forest
+
+src/
+├── data.py            CSV/Parquet loading and basic shape/schema checks
+├── preprocessing.py   D32 categorical/continuous feature handling, train/val split
+├── models.py           LightGBM response model, T-Learner, X-Learner, Causal Forest
+└── evaluation.py        Qini / AUUC / uplift@K metrics
+
+configs/
+└── config.yaml         seed, split ratios, model hyperparameters
+
+archive/                condensed-and-superseded governance docs (ADRs, decision
+                         register, prior contracts) kept for historical reference;
+                         see "Methodology notes" below for what actually matters
+
+requirements.txt
+README.md
 ```
 
-The project is notebook-first, not notebook-only. The relevant notebook must
-expose the question, pre-execution protocol, code, checks, observations,
-interpretation, and limitations. Reusable modules, scripts, and tests support
-that narrative only when reuse, correctness, an authoritative contract, or
-unreasonable notebook duplication justifies them.
+## Quickstart on Kaggle
 
-## Data policy
+1. **Attach the dataset.** Add the Kaggle dataset containing
+   `criteo-uplift-v2.1.csv` to your notebook's inputs.
+2. **Run `notebooks/01_data_processing.ipynb`.** Loads the CSV, checks shape,
+   defines `X = f0..f11`, `T = treatment`, `Y = conversion`, builds the
+   train/validation split, and optionally saves a processed Parquet file.
+3. **Run `notebooks/02_baseline_models.ipynb`.** Fits the LightGBM response
+   model, T-Learner, and X-Learner.
+4. **Run `notebooks/03_uplift_models.ipynb`** for the T-Learner/X-Learner
+   comparison, and **`notebooks/04_causal_forest.ipynb`** for Causal Forest.
+5. Each notebook reports Qini/AUUC/uplift@K metrics, plots, and feature
+   analysis for its models; conclusions are summarized at the end of
+   `04_causal_forest.ipynb`.
 
-Raw and processed CRITEO-UPLIFTv2.1 data must not be committed. Use an explicit
-local manifest rather than filename heuristics, and preserve processed-to-raw
-lineage. Setup and schema expectations are documented in
-[data/README.md](data/README.md).
+## Local setup
 
-The repository source code and documentation use the MIT License. The Criteo
-dataset is not covered by that repository license and remains subject to its own
-publisher terms and license.
+```powershell
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\jupyter.exe lab
+```
 
-## Documentation map
+Run notebooks from the repository root so `src.*` imports resolve.
 
-The authority hierarchy, specification map, and ADR statuses are maintained in
-[docs/index.md](docs/index.md). The owner-approved
-[decision register](docs/decision_register.csv) has highest precedence.
+## Data
 
-## Reproducibility
+`X` is exactly the ordered feature set `f0` through `f11`. `T` is binary
+`treatment` assignment. Primary `Y` is `conversion`; `visit` is an optional
+secondary outcome. `exposure` is post-assignment and must never enter `X`,
+eligibility, or the treatment definition. See [`data/README.md`](data/README.md)
+for the expected local layout — raw and processed data are not committed.
 
-Kaggle is the primary heavy-compute environment, and a full pipeline does not
-have to fit inside one Kaggle notebook session. Expensive stages communicate
-through explicit, versioned, immutable artifacts under
-`outputs/runs/<run_id>/`: a downstream stage re-derives and checksum-verifies
-its input from a declared upstream run rather than depending on shared
-in-memory state, so stages can run in different Kaggle sessions, on different
-machines, or months apart and still reproduce the same chain. Kaggle notebooks
-under `kaggle/` detect their environment and run against a Kaggle-attached
-input dataset or a local `data/raw/` copy with no other setup. For local
-development against the full data pipeline, dependencies and test commands are
-documented in [`CLAUDE.md`](CLAUDE.md#commands). No exact
-interpreter/package/platform lockfile is frozen at this stage; environment
-identity for consequential runs is captured in the corresponding immutable run
-manifest, not in this file.
+## Methodology notes
+
+These are the modeling decisions worth knowing before reading the notebooks or
+`src/`. They're condensed from this project's earlier, more heavily-documented
+research phase (full rationale archived under `archive/docs/` and
+`archive/docs/adr/` for anyone who wants the original derivation).
+
+**Feature semantics (D32).** All twelve `f0`–`f11` columns are stored as
+`float64`, but physical storage does not imply semantic type. Per the
+CRITEO-UPLIFTv2.1 publisher documentation and the official benchmark
+implementation: `f0`, `f2`, `f7`, `f10` are **continuous**; `f1`, `f3`, `f4`,
+`f5`, `f6`, `f8`, `f9`, `f11` are **categorical numeric tokens** with no
+ordinal meaning. Treating all twelve as plain continuous numbers (an easy
+mistake given the shared dtype) silently miscalibrates every downstream model
+that assumes ordering or scale on the categorical group — do not compute
+SMD/mean/variance on them, and do not infer categorical-vs-continuous status
+from cardinality. LightGBM is given the categorical group via its native
+categorical-feature representation; continuous features pass through
+unchanged.
+
+**X-Learner fold-local preprocessing.** X-Learner's nuisance stage uses
+two-fold cross-fitting. The categorical preprocessing transform (the
+train-fitted vocabulary used to build LightGBM's categorical representation)
+must be fit **only on each fold's own training rows** and then applied,
+unchanged, to that fold's out-of-fold predictions and validation set. Fitting
+one transform on the whole train partition and reusing it across both folds
+leaks each fold's categorical vocabulary information into the other
+(opposite) fold — a real bug that was found and fixed during this project's
+development. The effect-stage transform (tau1/tau0) has no cross-fitting
+boundary and is fit once on the full train partition, which is correct as-is.
+
+**Causal Forest categorical representation.** `econml.grf.CausalForest` has no
+LightGBM-equivalent native categorical support — it consumes a dense numeric
+matrix. Encoding the categorical tokens as raw ordinal integers (the same mistake
+that mirrors the D32 issue) would fabricate a false ordering the forest's
+splits would then exploit. The chosen representation is **frequency-capped
+top-K one-hot**: for each categorical feature, keep the top-`K` categories by
+train-set frequency, bucket everything else (including categories unseen at
+train time) into an explicit `OTHER` level, then one-hot encode; continuous
+features pass through unchanged. `K` is chosen from a resource ladder
+(32 → 16 → 8, picking the largest that fits available memory/runtime) — never
+by comparing model performance across `K` values. Unbounded one-hot and
+target/effect encoding were both rejected: unbounded one-hot is infeasible at
+full data scale, and target/effect encoding would leak the outcome into the
+same matrix the forest uses to place its splits.
+
+**Other standing assumptions:**
+- The estimand is assignment-based (intention-to-treat) CATE — models rank by
+  the effect of *treatment assignment*, never by observed `exposure`, which is
+  post-assignment and excluded from `X`.
+- All released rows are kept for the primary analysis (no deduplication) to
+  preserve the benchmark's actual population and empirical weights.
+- Qini above the theoretical random reference is the primary ranking metric;
+  no true individual treatment effect is observed on real data, so PEHE
+  against ground truth is not reported.
+- Uncertainty on the final model comparison is quantified with a paired,
+  treatment-arm-stratified bootstrap over fixed predictions (no retraining
+  inside bootstrap draws).
+
+## License
+
+Repository code and documentation are MIT licensed. The CRITEO-UPLIFTv2.1
+dataset itself is not covered by that license and remains subject to the
+publisher's own terms.

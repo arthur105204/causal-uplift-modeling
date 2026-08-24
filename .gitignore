@@ -21,9 +21,6 @@ data/processed/*
 # Generated artifacts
 outputs/*
 
-# Preserved local archive contents
-archive/*
-
 # Editor and OS metadata
 .vscode/
 .idea/

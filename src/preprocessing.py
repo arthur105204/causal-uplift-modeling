@@ -1,176 +1,148 @@
-"""T04 preprocessing / feature-engineering contract.
+"""Feature preprocessing and train/validation splitting.
 
-Default posture is no-op, per Issue #5: `X` stays exactly the ordered
-`f0`-`f11` columns at primary `float64` precision, and missing values pass
-through unimputed for LightGBM's native handling (docs/06). No transform is
-fit on anything but train rows.
+Two model families need two different representations of the same
+categorical features (D32/D34), and both are fit on TRAIN ONLY then reused
+unchanged on validation:
 
-T03-A/T03-B evidence already shows zero missing values across the released
-population, so there is currently nothing to impute even in principle; the
-identity transform below exists so the fit-on-train-only boundary and the
-column/dtype contract are enforced and tested regardless. An estimator-
-specific branch is added only if a future learner's API genuinely cannot
-accept this shared representation (T04.5) -- none does yet, because no
-learner has been implemented.
+- LightGBM (response model, T-Learner, X-Learner): pandas categorical dtype,
+  using LightGBM's native categorical split handling.
+- Causal Forest (econml.grf.CausalForest): no native categorical support, so
+  categorical features are frequency-capped top-K one-hot encoded, with a
+  trailing OTHER bucket for everything outside the top K (including unseen
+  categories at transform time). A single ordinal/rank column is deliberately
+  avoided -- that would reintroduce the ordinal-structure bug D32 exists to
+  fix. K is chosen for resource feasibility, never by model performance.
 """
 
 from __future__ import annotations
 
-from typing import Any
-
 import pandas as pd
 from pandas.api.types import CategoricalDtype
+from sklearn.model_selection import train_test_split
 
 from src.data import (
     CATEGORICAL_FEATURES,
     CONTINUOUS_FEATURES,
-    DataContractError,
     FEATURE_COLUMNS,
+    PRIMARY_OUTCOME,
+    TREATMENT_COLUMN,
 )
-CONTRACT_VERSION = "t04-preprocessing-v2"
 
-
-class PreprocessingContractError(DataContractError):
-    """Raised when the preprocessing contract is violated."""
 
 def _require_features(frame: pd.DataFrame) -> None:
     missing = sorted(set(FEATURE_COLUMNS).difference(frame.columns))
-
     if missing:
-        raise PreprocessingContractError(
-            f"Frame is missing required feature columns: {missing}"
-        )
+        raise ValueError(f"Frame is missing required feature columns: {missing}")
+
 
 class LightGBMFeatureTransform:
-    """Prepare publisher-defined continuous/categorical features for LightGBM."""
+    """Continuous features stay float64; categorical features become a
+    train-fitted pandas categorical dtype so LightGBM uses native categorical
+    splits instead of treating the token as an ordered number."""
 
     def __init__(self) -> None:
         self._fitted = False
         self._category_dtypes: dict[str, CategoricalDtype] = {}
 
-    def fit(
-        self,
-        train_frame: pd.DataFrame,
-    ) -> "LightGBMFeatureTransform":
+    def fit(self, train_frame: pd.DataFrame) -> "LightGBMFeatureTransform":
         _require_features(train_frame)
-
-        category_dtypes = {}
-
-        for feature in CATEGORICAL_FEATURES:
-            values = (
-                train_frame[feature]
-                .dropna()
-                .astype("float64")
-                .unique()
-            )
-
-            categories = pd.Index(values).sort_values()
-
-            category_dtypes[feature] = CategoricalDtype(
-                categories=categories,
+        self._category_dtypes = {
+            feature: CategoricalDtype(
+                categories=pd.Index(train_frame[feature].dropna().astype("float64").unique()).sort_values(),
                 ordered=False,
             )
-
-        self._category_dtypes = category_dtypes
+            for feature in CATEGORICAL_FEATURES
+        }
         self._fitted = True
-
         return self
 
-    def transform(
-        self,
-        frame: pd.DataFrame,
-    ) -> pd.DataFrame:
+    def transform(self, frame: pd.DataFrame) -> pd.DataFrame:
         if not self._fitted:
-            raise PreprocessingContractError(
-                "transform() called before fit()"
-            )
-
+            raise RuntimeError("transform() called before fit()")
         _require_features(frame)
-
         output = frame.loc[:, list(FEATURE_COLUMNS)].copy()
-
         for feature in CONTINUOUS_FEATURES:
             output[feature] = output[feature].astype("float64")
-
         for feature in CATEGORICAL_FEATURES:
             output[feature] = pd.Categorical(
-                output[feature].astype("float64"),
-                dtype=self._category_dtypes[feature],
+                output[feature].astype("float64"), dtype=self._category_dtypes[feature]
             )
-
-        if tuple(output.columns) != FEATURE_COLUMNS:
-            raise PreprocessingContractError(
-                "Feature column order drifted from the contract"
-            )
-
         return output
 
-    def fit_transform(
-        self,
-        train_frame: pd.DataFrame,
-    ) -> pd.DataFrame:
+    def fit_transform(self, train_frame: pd.DataFrame) -> pd.DataFrame:
         return self.fit(train_frame).transform(train_frame)
 
-    def unseen_category_counts(
-        self,
-        frame: pd.DataFrame,
-    ) -> dict[str, int]:
-        if not self._fitted:
-            raise PreprocessingContractError(
-                "unseen_category_counts() called before fit()"
-            )
 
-        result = {}
+CATEGORICAL_ENCODER_K_LADDER = (32, 16, 8)
 
+
+def _category_column(feature: str, value: float) -> str:
+    return f"{feature}__cat_{value!r}"
+
+
+def _other_column(feature: str) -> str:
+    return f"{feature}__OTHER"
+
+
+class CausalForestCategoricalEncoder:
+    """Frequency-capped top-K + OTHER one-hot encoding for Causal Forest's
+    categorical features. Fit on TRAIN only, reused unchanged afterwards.
+    Continuous features pass through unchanged."""
+
+    def __init__(self, k: int = 32) -> None:
+        if k not in CATEGORICAL_ENCODER_K_LADDER:
+            raise ValueError(f"k={k!r} must be one of {CATEGORICAL_ENCODER_K_LADDER}")
+        self.k = k
+        self._fitted = False
+        self._vocabularies: dict[str, list[float]] = {}
+
+    def fit(self, train_frame: pd.DataFrame) -> "CausalForestCategoricalEncoder":
+        _require_features(train_frame)
+        vocabularies = {}
         for feature in CATEGORICAL_FEATURES:
-            categories = self._category_dtypes[feature].categories
-            values = frame[feature]
+            values = train_frame[feature].astype("float64")
+            counts = values.value_counts()
+            # Deterministic tie-break: (count desc, value asc).
+            ranked = sorted(counts.index.tolist(), key=lambda v: (-counts[v], v))
+            vocabularies[feature] = sorted(float(v) for v in ranked[: self.k])
+        self._vocabularies = vocabularies
+        self._fitted = True
+        return self
 
-            unseen = values.notna() & ~values.isin(categories)
-            result[feature] = int(unseen.sum())
-
-        return result
-
-    def category_state(self) -> dict[str, list[float]]:
+    def transform(self, frame: pd.DataFrame) -> pd.DataFrame:
         if not self._fitted:
-            raise PreprocessingContractError(
-                "category_state() called before fit()"
-            )
+            raise RuntimeError("transform() called before fit()")
+        _require_features(frame)
+        blocks = [frame[[feature]].astype("float64") for feature in CONTINUOUS_FEATURES]
+        for feature in CATEGORICAL_FEATURES:
+            vocab = self._vocabularies[feature]
+            values = frame[feature].astype("float64")
+            in_vocab = values.isin(vocab)
+            block = {_category_column(feature, v): (values == v).astype("float64") for v in vocab}
+            block[_other_column(feature)] = (~in_vocab).astype("float64")
+            blocks.append(pd.DataFrame(block, index=frame.index))
+        return pd.concat(blocks, axis=1)
 
-        return {
-            feature: [
-                float(value)
-                for value in dtype.categories.tolist()
-            ]
-            for feature, dtype in self._category_dtypes.items()
-        }
+    def fit_transform(self, train_frame: pd.DataFrame) -> pd.DataFrame:
+        return self.fit(train_frame).transform(train_frame)
 
 
-def preprocessing_contract() -> dict[str, Any]:
-    """Serializable, content-hashable description of the frozen T04 contract."""
+SPLIT_SEED = 42
+VALIDATION_FRACTION = 0.15
 
-    return {
-        "contract_version": CONTRACT_VERSION,
-        "feature_columns": list(FEATURE_COLUMNS),
-        "feature_semantics": {
-            "continuous": list(CONTINUOUS_FEATURES),
-            "categorical": list(CATEGORICAL_FEATURES),
-        },
-        "physical_storage_precision": "float64",
-        "lightgbm_representation": {
-            "continuous": "float64",
-            "categorical": "train-fitted pandas unordered category",
-            "unknown_category": "missing",
-        },
-        "fit_boundary": "train_only",
-        "learned_state": "categorical vocabularies",
-        "imputation": "none",
-        "held_out_rule": (
-            "reuse the frozen training-fitted category vocabularies; "
-            "never refit on held-out data"
-        ),
-        "causal_forest_representation": (
-            "blocked until an explicit categorical encoding contract "
-            "is accepted"
-        ),
-    }
+
+def train_validation_split(
+    frame: pd.DataFrame,
+    *,
+    validation_fraction: float = VALIDATION_FRACTION,
+    seed: int = SPLIT_SEED,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """One seeded, joint-(treatment, conversion)-stratified train/validation
+    split, so both treatment arms and both outcome classes are represented
+    in both halves."""
+
+    strata = frame[TREATMENT_COLUMN].astype(str) + "_" + frame[PRIMARY_OUTCOME].astype(str)
+    train_frame, val_frame = train_test_split(
+        frame, test_size=validation_fraction, random_state=seed, stratify=strata
+    )
+    return train_frame.reset_index(drop=True), val_frame.reset_index(drop=True)
