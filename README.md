@@ -26,19 +26,20 @@ data/
 └── README.md              expected local layout; data itself is not versioned
 
 notebooks/
-├── 01_data_processing.ipynb   load CSV, validate shape, define X/T/Y, train/val split
+├── 01_data_processing.ipynb   load CSV, validate, define X/T/Y, train/val/test split
 ├── 02_baseline_models.ipynb   LightGBM response model (non-causal baseline)
 ├── 03_uplift_models.ipynb     T-Learner, X-Learner
-└── 04_causal_forest.ipynb     Causal Forest
+└── 04_causal_forest.ipynb     Causal Forest + final test-set comparison
 
 src/
-├── data.py            CSV/Parquet loading and basic shape/schema checks
-├── preprocessing.py   D32 categorical/continuous feature handling, train/val split
+├── data.py            path resolution, config loading, CSV/Parquet I/O, schema checks
+├── preprocessing.py   categorical feature handling, train/validation/test split
 ├── models.py           LightGBM response model, T-Learner, X-Learner, Causal Forest
-└── evaluation.py        Qini / AUUC / uplift@K metrics
+└── evaluation.py        Qini, AUUC, uplift@K, decile and ATE metrics
 
 configs/
-└── config.yaml         seed, split ratios, model hyperparameters
+└── config.yaml         seed, split ratios, model hyperparameters (kept in sync
+                         with the code by tests/test_config.py)
 
 archive/                condensed-and-superseded governance docs (ADRs, decision
                          register, prior contracts) kept for historical reference;
@@ -50,28 +51,57 @@ README.md
 
 ## Quickstart on Kaggle
 
-1. **Attach the dataset.** Add the Kaggle dataset containing
-   `criteo-uplift-v2.1.csv` to your notebook's inputs.
-2. **Run `notebooks/01_data_processing.ipynb`.** Loads the CSV, checks shape,
-   defines `X = f0..f11`, `T = treatment`, `Y = conversion`, builds the
-   train/validation split, and optionally saves a processed Parquet file.
-3. **Run `notebooks/02_baseline_models.ipynb`.** Fits the LightGBM response
-   model, T-Learner, and X-Learner.
-4. **Run `notebooks/03_uplift_models.ipynb`** for the T-Learner/X-Learner
-   comparison, and **`notebooks/04_causal_forest.ipynb`** for Causal Forest.
-5. Each notebook reports Qini/AUUC/uplift@K metrics, plots, and feature
-   analysis for its models; conclusions are summarized at the end of
-   `04_causal_forest.ipynb`.
+1. **Make the repository available** to the kernel — clone it into
+   `/kaggle/working` or attach it as a dataset. The notebooks locate the repo
+   root themselves; they do not assume the kernel's working directory.
+2. **Attach the data**: any Kaggle dataset containing
+   `criteo-uplift-v2.1.csv`. The dataset slug is *not* hardcoded — every
+   attached input is searched.
+3. **Run the notebooks in order:**
+
+   | Notebook | Does |
+   |---|---|
+   | `01_data_processing` | loads the CSV, validates it, states `X = f0..f11` / `T = treatment` / `Y = conversion`, builds the train/validation/test split, writes Parquet partitions |
+   | `02_baseline_models` | LightGBM response model (non-causal comparator) |
+   | `03_uplift_models` | T-Learner and X-Learner |
+   | `04_causal_forest` | Causal Forest, then the final test-set comparison of every model |
+
+Notebooks 02–04 each save their test-set predictions, and `04` reads them all
+to build the final comparison — so the models can be run in separate kernel
+sessions without refitting anything. All generated files are written under
+`/kaggle/working` (the only writable location on Kaggle).
+
+## Evaluation design
+
+| Partition | Share | Used for |
+|---|---|---|
+| train | 70% | model fitting |
+| validation | 15% | early stopping and model selection |
+| test | 15% | untouched until the final comparison in notebook 04 |
+
+Notebooks 02 and 03 report validation numbers while developing; the test
+partition is scored once, in `04`'s final synthesis. That keeps the headline
+comparison off data the models were selected against.
+
+The primary ranking statistic is **Qini above the theoretical random
+reference**, reported alongside **AUUC** (area under the uplift curve), which
+weights arm imbalance differently, plus `uplift@K` and a decile breakdown.
+Empirical PEHE against true ITE is not reported — both potential outcomes are
+never observed for any individual.
 
 ## Local setup
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
+.venv\Scripts\python.exe -m pytest tests/ -q
 .venv\Scripts\jupyter.exe lab
 ```
 
-Run notebooks from the repository root so `src.*` imports resolve.
+Local runs are for development, unit tests, and small synthetic checks — the
+full ~13.9M-row pipeline is meant to run on Kaggle. Place a local CSV at
+`data/raw/criteo-uplift-v2.1.csv` if you want to exercise the notebooks
+outside Kaggle.
 
 ## Data
 
@@ -133,12 +163,16 @@ same matrix the forest uses to place its splits.
   post-assignment and excluded from `X`.
 - All released rows are kept for the primary analysis (no deduplication) to
   preserve the benchmark's actual population and empirical weights.
-- Qini above the theoretical random reference is the primary ranking metric;
-  no true individual treatment effect is observed on real data, so PEHE
-  against ground truth is not reported.
-- Uncertainty on the final model comparison is quantified with a paired,
-  treatment-arm-stratified bootstrap over fixed predictions (no retraining
-  inside bootstrap draws).
+- Predicted uplift is not a true individual treatment effect, and `f0`–`f11`
+  are anonymized with no known business meaning — so the CATE analysis in
+  notebook 04 describes *what the models believe*, not a validated causal
+  mechanism.
+
+**Not implemented** (worth knowing before you read too much into a small
+gap between two models): the comparison reports point estimates only. There
+are no confidence intervals on the metric differences — a paired,
+arm-stratified bootstrap over the fixed test predictions would be the
+natural next addition.
 
 ## License
 

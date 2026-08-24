@@ -12,6 +12,16 @@ outcome versus what the control arm's response rate would predict for the
 same number of treated units. The theoretical random-ranking reference line
 is Q_random(c) = c * Q_full, i.e. theoretical_random_qini_area = Q_full / 2.
 qini_above_random is the primary summary statistic used to compare models.
+
+AUUC (area under the uplift curve) is reported alongside it as a second,
+differently-weighted view of the same ranking. The uplift curve differs from
+Qini in how it handles arm imbalance:
+
+    uplift_gain(r) = (cum_y1(r)/cum_n1(r) - cum_y0(r)/cum_n0(r)) * r
+
+i.e. the difference of the two arms' response *rates*, scaled by prefix
+size, rather than Qini's count-ratio reweighting of the control outcome sum.
+Both are reported above their own theoretical random reference (area / 2).
 """
 
 from __future__ import annotations
@@ -62,9 +72,13 @@ class RankingMetrics:
     qini_area: float
     theoretical_random_qini_area: float
     qini_above_random: float
+    auuc_area: float
+    theoretical_random_auuc_area: float
+    auuc_above_random: float
     uplift_at_k: dict[str, float | None]
     decile_table: pd.DataFrame
     qini_curve: pd.DataFrame
+    uplift_curve: pd.DataFrame
 
 
 def evaluate_ranking(scores, treatment, outcome) -> RankingMetrics:
@@ -98,6 +112,31 @@ def evaluate_ranking(scores, treatment, outcome) -> RankingMetrics:
     qini_area = float(np.sum(0.5 * (q[1:] + q[:-1]) * (c[1:] - c[:-1])))
     theoretical_random_qini_area = q_full / 2.0
 
+    # Uplift curve / AUUC. Distinct from Qini: Qini reweights the control
+    # arm's outcome sum by the treated/control count ratio, whereas the
+    # uplift curve takes the difference of the two arms' response *rates*
+    # and scales it by the prefix size:
+    #     uplift_gain(r) = (cum_y1(r)/cum_n1(r) - cum_y0(r)/cum_n0(r)) * r
+    # Only prefixes where BOTH arms are present are defined.
+    both_arms = (cum_n0 > 0) & (cum_n1 > 0)
+    if not both_arms.any():
+        raise ValueError("No valid uplift prefix exists (never both arms present)")
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rate1 = np.where(cum_n1 == 0, np.nan, cum_y1 / np.where(cum_n1 == 0, np.nan, cum_n1))
+        rate0 = np.where(cum_n0 == 0, np.nan, cum_y0 / np.where(cum_n0 == 0, np.nan, cum_n0))
+        uplift_gain_all = (rate1 - rate0) * ranks
+    uplift_coverage = (ranks[both_arms] / n).astype(np.float64)
+    uplift_gain = uplift_gain_all[both_arms].astype(np.float64)
+
+    u_full = float(uplift_gain[-1])
+    uplift_curve_frame = pd.DataFrame({
+        "coverage": np.concatenate([[0.0], uplift_coverage]),
+        "uplift_gain": np.concatenate([[0.0], uplift_gain]),
+    })
+    uc, ug = uplift_curve_frame["coverage"].to_numpy(), uplift_curve_frame["uplift_gain"].to_numpy()
+    auuc_area = float(np.sum(0.5 * (ug[1:] + ug[:-1]) * (uc[1:] - uc[:-1])))
+    theoretical_random_auuc_area = u_full / 2.0
+
     uplift_at_k: dict[str, float | None] = {}
     for k, label in zip(RANKING_K_GRID, RANKING_K_LABELS):
         m = min(n, max(1, math.ceil(k * n)))
@@ -119,8 +158,12 @@ def evaluate_ranking(scores, treatment, outcome) -> RankingMetrics:
 
     return RankingMetrics(
         n=n, qini_area=qini_area, theoretical_random_qini_area=theoretical_random_qini_area,
-        qini_above_random=qini_area - theoretical_random_qini_area, uplift_at_k=uplift_at_k,
+        qini_above_random=qini_area - theoretical_random_qini_area,
+        auuc_area=auuc_area, theoretical_random_auuc_area=theoretical_random_auuc_area,
+        auuc_above_random=auuc_area - theoretical_random_auuc_area,
+        uplift_at_k=uplift_at_k,
         decile_table=pd.DataFrame(decile_rows), qini_curve=curve,
+        uplift_curve=uplift_curve_frame,
     )
 
 

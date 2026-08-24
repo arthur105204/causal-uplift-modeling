@@ -5,7 +5,48 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src.data import EXPECTED_COLUMNS, FEATURE_COLUMNS, load_csv, load_parquet, save_parquet
+from src.data import (
+    CSV_FILENAME,
+    EXPECTED_COLUMNS,
+    FEATURE_COLUMNS,
+    load_csv,
+    load_parquet,
+    resolve_csv_path,
+    save_parquet,
+)
+
+
+def _touch(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+    return path
+
+
+def test_resolve_csv_prefers_any_attached_kaggle_dataset_slug(tmp_path: Path) -> None:
+    """The dataset slug must not be hardcoded -- whatever the user names it,
+    the CSV should be found."""
+
+    kaggle_input = tmp_path / "input"
+    expected = _touch(kaggle_input / "someone-elses-slug-name" / CSV_FILENAME)
+    found = resolve_csv_path(kaggle_input=kaggle_input, local_dir=tmp_path / "nonexistent")
+    assert found == expected
+
+
+def test_resolve_csv_searches_nested_directories_inside_a_dataset(tmp_path: Path) -> None:
+    kaggle_input = tmp_path / "input"
+    expected = _touch(kaggle_input / "slug" / "nested" / "deeper" / CSV_FILENAME)
+    assert resolve_csv_path(kaggle_input=kaggle_input, local_dir=tmp_path / "none") == expected
+
+
+def test_resolve_csv_falls_back_to_local_data_raw(tmp_path: Path) -> None:
+    local = tmp_path / "raw"
+    expected = _touch(local / CSV_FILENAME)
+    assert resolve_csv_path(kaggle_input=tmp_path / "no-kaggle-here", local_dir=local) == expected
+
+
+def test_resolve_csv_raises_an_actionable_error_when_missing(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match="attach a dataset"):
+        resolve_csv_path(kaggle_input=tmp_path / "nope", local_dir=tmp_path / "also-nope")
 
 
 def _frame(rows: int = 8) -> pd.DataFrame:

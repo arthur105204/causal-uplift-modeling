@@ -8,7 +8,7 @@ from src.data import CATEGORICAL_FEATURES, CONTINUOUS_FEATURES, FEATURE_COLUMNS,
 from src.preprocessing import (
     CausalForestCategoricalEncoder,
     LightGBMFeatureTransform,
-    train_validation_split,
+    train_validation_test_split,
 )
 
 
@@ -98,26 +98,53 @@ def test_cf_encoder_never_produces_a_single_ordinal_column() -> None:
         assert len(expanded) > 1
 
 
-# --- train/validation split -------------------------------------------------
+# --- train/validation/test split --------------------------------------------
 
 
 def test_split_is_disjoint_and_complete() -> None:
-    frame = _frame(rows=200, seed=1)
-    train, val = train_validation_split(frame)
-    assert len(train) + len(val) == len(frame)
+    frame = _frame(rows=400, seed=1)
+    train, val, test = train_validation_test_split(frame)
+    assert len(train) + len(val) + len(test) == len(frame)
 
 
-def test_split_preserves_both_arms_and_outcomes_in_both_halves() -> None:
-    frame = _frame(rows=200, seed=2)
-    train, val = train_validation_split(frame)
-    for part in (train, val):
+def test_split_respects_requested_proportions() -> None:
+    frame = _frame(rows=2000, seed=9)
+    train, val, test = train_validation_test_split(frame)
+    n = len(frame)
+    assert len(train) / n == pytest.approx(0.70, abs=0.01)
+    assert len(val) / n == pytest.approx(0.15, abs=0.01)
+    assert len(test) / n == pytest.approx(0.15, abs=0.01)
+
+
+def test_split_preserves_both_arms_and_outcomes_in_every_partition() -> None:
+    frame = _frame(rows=400, seed=2)
+    for part in train_validation_test_split(frame):
         assert set(part[TREATMENT_COLUMN].unique()) == {0, 1}
         assert set(part[PRIMARY_OUTCOME].unique()) == {0, 1}
 
 
+def test_split_partitions_share_no_rows() -> None:
+    """Leakage guard: a row must appear in exactly one partition."""
+
+    frame = _frame(rows=400, seed=4).reset_index(drop=True)
+    frame["_row_marker"] = np.arange(len(frame))
+    train, val, test = train_validation_test_split(frame)
+    markers = [set(p["_row_marker"]) for p in (train, val, test)]
+    assert markers[0] & markers[1] == set()
+    assert markers[0] & markers[2] == set()
+    assert markers[1] & markers[2] == set()
+    assert len(markers[0] | markers[1] | markers[2]) == len(frame)
+
+
 def test_split_is_deterministic_for_a_fixed_seed() -> None:
-    frame = _frame(rows=100, seed=3)
-    train1, val1 = train_validation_split(frame, seed=7)
-    train2, val2 = train_validation_split(frame, seed=7)
-    pd.testing.assert_frame_equal(train1, train2)
-    pd.testing.assert_frame_equal(val1, val2)
+    frame = _frame(rows=400, seed=3)
+    first = train_validation_test_split(frame, seed=7)
+    second = train_validation_test_split(frame, seed=7)
+    for a, b in zip(first, second):
+        pd.testing.assert_frame_equal(a, b)
+
+
+def test_split_rejects_fractions_that_do_not_sum_to_one() -> None:
+    frame = _frame(rows=200, seed=5)
+    with pytest.raises(ValueError, match="sum to 1.0"):
+        train_validation_test_split(frame, train_fraction=0.7, validation_fraction=0.2, test_fraction=0.2)

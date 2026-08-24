@@ -1,72 +1,58 @@
 # Reproducible configuration for the CRITEO-UPLIFTv2.1 causal-uplift pipeline.
 #
-# This replaces the previous task-numbered (t03..t11) config files. Their
-# lifecycle/run-id/manifest metadata has been dropped; the modeling
-# hyperparameters and methodology decisions that actually shaped results are
-# kept here. See README.md "Methodology notes" for the reasoning behind D32
-# (categorical feature handling), the X-Learner fold-local preprocessing fix,
-# and the Causal Forest categorical encoding.
+# Every key here is consumed by src/ or the notebooks. tests/test_config.py
+# asserts these values stay in sync with the code defaults, so this file
+# cannot drift into decoration.
+#
+# See README.md "Methodology notes" for the reasoning behind the categorical
+# feature handling (D32), the X-Learner fold-local preprocessing fix, and the
+# Causal Forest categorical encoding.
 
 seed: 42
 
 data:
-  # Canonical feature/column roles (frozen convention, not a tunable).
-  feature_columns: [f0, f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11]
+  csv_filename: criteo-uplift-v2.1.csv
   treatment_column: treatment
   primary_outcome: conversion
-  secondary_outcome: visit          # optional, non-blocking secondary robustness check
-  audit_only_column: exposure       # post-assignment; never enters X or eligibility
-
+  secondary_outcome: visit
   # D32: physical float64 storage does not imply continuous/ordinal semantics.
   continuous_features: [f0, f2, f7, f10]
   categorical_features: [f1, f3, f4, f5, f6, f8, f9, f11]
 
 split:
-  train_fraction: 0.70
-  validation_fraction: 0.15
-  test_fraction: 0.15               # plain held-back split, no lifecycle gate
+  train_fraction: 0.70        # model fitting
+  validation_fraction: 0.15   # early stopping and model selection
+  test_fraction: 0.15         # untouched until final evaluation
   stratify_by: [treatment, conversion]   # joint (T, Y) stratification
-  seed: 42
 
-lightgbm_response_model:
-  # Also the base-learner config for T-Learner's mu1/mu0 and X-Learner's
-  # nuisance-stage fits (mu0, mu1, e_hat) -- identical config across arms.
+lightgbm:
+  # Base-learner config for the response model, T-Learner's mu1/mu0, and
+  # X-Learner's nuisance stage -- identical across arms.
   objective: binary
+  learning_rate: 0.1
+  num_leaves: 31
+  min_data_in_leaf: 20
   num_boost_round_cap: 2000
   early_stopping_rounds: 50
-  seed: 42
-  categorical_feature: auto          # use the pandas-categorical dtype columns
 
 xlearner:
-  # Effect-stage regressions (tau1, tau0) use a fixed round count, no
-  # early-stopping search -- deliberately lighter than the nuisance stage.
-  effect_num_boost_round: 100
   cross_fitting_folds: 2
-  fold_seed: 42
-  # Correctness fix: each fold's categorical preprocessing must be fit ONLY
-  # on that fold's own training rows, never on the opposite (OOF) fold or on
-  # the whole train partition. See src/preprocessing.py and README.md.
-  preprocessing_fit_scope: fold_local
+  # Effect stage (tau1/tau0): fixed round count, no early-stopping search.
+  effect_num_boost_round: 100
+  # Inner held-out slice used for the nuisance models' early stopping.
+  inner_validation_fraction: 0.2
 
 causal_forest:
-  library: econml.grf.CausalForest
-  n_estimators: 100                  # must be exactly divisible by subforest_size
-  criterion: mse
-  honest: true
+  n_estimators: 100      # must be exactly divisible by subforest_size
+  honest: true           # required for valid inference
   inference: false
   min_samples_leaf: 5
   max_samples: 0.45
-  min_balancedness_tol: 0.45
   subforest_size: 4
-  max_depth: null
-  n_jobs: 1                          # required for bit-identical reproducibility
-  random_state: 42
-  robustness_seeds: [123, 2026]      # secondary stability check, non-blocking
-  categorical_encoding:
-    # econml's CausalForest has no LightGBM-equivalent native categorical
-    # support. Decision: frequency-capped top-K one-hot + OTHER bucket per
-    # categorical feature, K chosen from resource constraints.
-    method: frequency_capped_top_k_one_hot
-    k_ladder: [32, 16, 8]
-    tie_break: "train frequency desc, then category value asc"
-    missing_value_policy: fail_closed   # raise on NaN in a categorical feature; no MISSING bucket
+  n_jobs: 1              # required for bit-identical reproducibility
+  # econml has no native categorical support: frequency-capped top-K one-hot
+  # + OTHER bucket. K is chosen for resource feasibility, never by performance.
+  categorical_top_k: 32
+
+evaluation:
+  uplift_at_k: [0.10, 0.20, 0.30, 0.50, 1.00]

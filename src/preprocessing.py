@@ -128,21 +128,63 @@ class CausalForestCategoricalEncoder:
 
 
 SPLIT_SEED = 42
+TRAIN_FRACTION = 0.70
 VALIDATION_FRACTION = 0.15
+TEST_FRACTION = 0.15
 
 
-def train_validation_split(
+def _strata(frame: pd.DataFrame) -> pd.Series:
+    """Joint (treatment, conversion) stratum label, so both arms and both
+    outcome classes stay represented in every partition."""
+
+    return frame[TREATMENT_COLUMN].astype(str) + "_" + frame[PRIMARY_OUTCOME].astype(str)
+
+
+def train_validation_test_split(
     frame: pd.DataFrame,
     *,
+    train_fraction: float = TRAIN_FRACTION,
     validation_fraction: float = VALIDATION_FRACTION,
+    test_fraction: float = TEST_FRACTION,
     seed: int = SPLIT_SEED,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """One seeded, joint-(treatment, conversion)-stratified train/validation
-    split, so both treatment arms and both outcome classes are represented
-    in both halves."""
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Seeded three-way split, joint-(treatment, conversion) stratified at
+    both stages.
 
-    strata = frame[TREATMENT_COLUMN].astype(str) + "_" + frame[PRIMARY_OUTCOME].astype(str)
-    train_frame, val_frame = train_test_split(
-        frame, test_size=validation_fraction, random_state=seed, stratify=strata
+    train      -- model fitting
+    validation -- early stopping and model selection
+    test       -- untouched until the final evaluation
+
+    Done in two stages: hold out `test` first, then carve `validation` out of
+    the remainder at the rate that makes the overall proportions come out
+    right. Stratifying at each stage keeps the arm/outcome mix consistent
+    across all three partitions.
+    """
+
+    total = train_fraction + validation_fraction + test_fraction
+    if abs(total - 1.0) > 1e-9:
+        raise ValueError(f"Split fractions must sum to 1.0, got {total}")
+    for name, value in (
+        ("train_fraction", train_fraction),
+        ("validation_fraction", validation_fraction),
+        ("test_fraction", test_fraction),
+    ):
+        if not 0.0 < value < 1.0:
+            raise ValueError(f"{name} must be strictly between 0 and 1, got {value}")
+
+    development, test_frame = train_test_split(
+        frame, test_size=test_fraction, random_state=seed, stratify=_strata(frame)
     )
-    return train_frame.reset_index(drop=True), val_frame.reset_index(drop=True)
+    # validation as a share of what's left after removing the test partition
+    validation_share = validation_fraction / (train_fraction + validation_fraction)
+    train_frame, val_frame = train_test_split(
+        development,
+        test_size=validation_share,
+        random_state=seed,
+        stratify=_strata(development),
+    )
+    return (
+        train_frame.reset_index(drop=True),
+        val_frame.reset_index(drop=True),
+        test_frame.reset_index(drop=True),
+    )

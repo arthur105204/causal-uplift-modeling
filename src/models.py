@@ -40,6 +40,8 @@ REGRESSION_CONFIG: dict[str, object] = {**BINARY_CONFIG, "objective": "regressio
 NUM_BOOST_ROUND_CAP = 2000
 EARLY_STOPPING_ROUNDS = 50
 EFFECT_NUM_BOOST_ROUND = 100  # X-Learner effect stage: no valid held-out target to early-stop against
+CROSS_FITTING_FOLDS = 2
+INNER_VALIDATION_FRACTION = 0.2  # held-out slice for the nuisance models' early stopping
 
 
 def fit_classifier(X_train, y_train, X_val, y_val, *, seed: int = 42) -> lgb.Booster:
@@ -170,7 +172,9 @@ def fit_x_learner(raw_train_frame, T_train, Y_train, *, seed: int = 42) -> XLear
         # wastes compute and can degrade the OOF pseudo-outcome quality this
         # nuisance stage feeds into.
         inner_idx = np.arange(len(X_arm))
-        inner_train, inner_val = train_test_split(inner_idx, test_size=0.2, random_state=seed, stratify=Y_arm)
+        inner_train, inner_val = train_test_split(
+            inner_idx, test_size=INNER_VALIDATION_FRACTION, random_state=seed, stratify=Y_arm
+        )
         return fit_classifier(
             X_arm.iloc[inner_train], Y_arm[inner_train], X_arm.iloc[inner_val], Y_arm[inner_val], seed=seed
         )
