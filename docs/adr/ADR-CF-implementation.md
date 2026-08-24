@@ -36,6 +36,30 @@ The implementation must not be described as an exact Wager–Athey estimator
 unless its library, objective, honesty, inference, and support behavior justify
 that claim.
 
+## Categorical representation blocker (D32)
+
+Per D32, `f1`, `f3`, `f4`, `f5`, `f6`, `f8`, `f9`, `f11` are categorical
+numeric tokens with no ordinal interpretation; `f0`, `f2`, `f7`, `f10` are
+continuous. Unlike LightGBM (`ADR-base-learner.md`), the qualifying
+econml-family Causal Forest implementations have no built-in native
+categorical representation equivalent to LightGBM's. Passing raw `f0`–`f11`
+directly into `fit_causal_forest()` as an undifferentiated continuous/numeric
+matrix is not a conforming implementation of this ADR and must fail closed
+with an explicit error rather than proceed.
+
+`OPEN_DECISION / IMPLEMENTATION_BLOCKER`: the concrete categorical
+representation for Causal Forest (e.g., one-hot, ordinal, hashing, or target
+encoding) is not selected here. This ADR does not invent one. A candidate
+representation must be proposed as an explicit amendment to this ADR — not
+assumed from the official Criteo benchmark's own preprocessing, which is
+evidence about their benchmark, not automatic authorization for this
+project's econml usage — and must document its correctness, honesty/support
+compatibility, and memory/runtime cost at the ~9.8M-row training scale before
+it can be exercised at any RESOURCE gate or FULL run. Until resolved, Causal
+Forest fitting against real (non-synthetic-encoded) `f0`–`f11` input remains
+blocked; this blocks gate progression, not the accepted `MAIN_COMPARATOR`
+role.
+
 ## Implementation-selection criteria
 
 The Sprint 2 selection record must compare maintained Python implementations
@@ -48,8 +72,9 @@ first and document:
    variance or interval estimates actually claimed;
 4. deterministic seeds, parallelism controls, serialization, reload equivalence,
    and exact prediction/artifact schemas;
-5. compatibility with numeric `f0`–`f11`, missing-value policy, source-row
-   identity, and the frozen train/validation/test boundary;
+5. compatibility with the D32 continuous/categorical `f0`–`f11` split (not a
+   uniform numeric matrix), missing-value policy, source-row identity, and the
+   frozen train/validation/test boundary;
 6. feasibility at the applicable D30 SMOKE, RESOURCE gate(s), and full-data
    scale gates; and
 7. license, maintenance, runtime, peak memory, and integration cost.
@@ -67,8 +92,9 @@ evaluated and documented using synthetic or permitted development data before
 test release:
 
 1. **Correctness gate:** pin implementation/version/configuration and verify the
-   exact `X/T/Y` contract, treatment coding, finite CATE scores, and metric input
-   schema.
+   exact `X/T/Y` contract, treatment coding, finite CATE scores, metric input
+   schema, and the D32 categorical representation blocker above (raw
+   undifferentiated `f0`–`f11` input is rejected, not silently accepted).
 2. **Synthetic-effect gate:** recover direction/ranking on known positive,
    negative, zero, and heterogeneous-effect fixtures within predeclared
    tolerances; do not treat these fixtures as real-data results.

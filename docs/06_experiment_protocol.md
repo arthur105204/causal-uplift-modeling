@@ -42,6 +42,7 @@ The protocol inherits the [causal contract](01_causal_contract.md),
 | Random permutations | `200`. |
 | Early stopping | Up to `50` rounds on validation during development only. |
 | Missing features | Preserve missing `f0`–`f11` values for LightGBM native handling; no imputation or added missingness feature. Missingness is still reported. |
+| Feature representation | D32: `f0`,`f2`,`f7`,`f10` are continuous; `f1`,`f3`,`f4`,`f5`,`f6`,`f8`,`f9`,`f11` are categorical numeric tokens with no ordinal interpretation. Any estimator-specific representation state (e.g., a learned categorical vocabulary) is fit on training data only within the fitting boundary that applies to that stage (outer training partition, or a cross-fitting fold's training side) and reused unchanged on the corresponding validation/held-out/out-of-fold rows; it is never refit on those rows. |
 | Secondary outcome | If present and binary, `visit` is evaluated only as a predeclared secondary robustness outcome. It never replaces primary `Y=conversion`, enters `X`, filters rows, or selects a model. |
 
 The D30 SMOKE/RESOURCE stages are resource/correctness promotion gates, not
@@ -77,6 +78,27 @@ strata and to return opaque HARD_GATE support status. Before release, test label
 test outcome/arm summaries, and test-derived diagnostics remain sealed from the
 development process. Pre-release `split_summary.csv` must omit or seal test label
 counts/rates; they may be populated only after authorized release.
+
+## Execution environment and session boundaries
+
+Kaggle is the primary heavy-compute environment. A stage sequence below does
+not have to execute inside one Kaggle notebook session: a full pipeline may
+span multiple Kaggle sessions, and heavy or held-out-sensitive computation may
+run in `notebooks/internal/` rather than a public notebook. What makes stages
+executed in different sessions reproducible from one another is not shared
+runtime state — it is the explicit, versioned, immutable artifact each stage
+writes under `outputs/runs/<run_id>/` and the manifest/checksum chain a
+downstream stage reads back. A downstream stage never inherits an upstream
+stage's in-memory objects; it re-derives its input from the declared upstream
+run's artifacts and verifies identity before proceeding.
+
+The public `kaggle/01_data_understanding.ipynb` through
+`kaggle/04_final_evaluation.ipynb` series presents the reader-facing story and
+is not required to itself execute every heavy stage in this protocol; it may
+consume artifacts produced by an internal notebook or a prior Kaggle session.
+Local execution is for editing, unit tests, and small/synthetic verification,
+not for producing the primary development- or full-scale evidence for a
+consequential stage.
 
 ## Required sequence
 

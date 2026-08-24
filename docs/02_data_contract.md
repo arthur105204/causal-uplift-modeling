@@ -35,7 +35,7 @@ is permitted without that additional evidence.
 
 | Columns | Presence | Type/value contract | Role |
 |---|---|---|---|
-| `f0`–`f11` | required | Numeric; infinite values forbidden. Missingness is reported and handled only under a predeclared policy. | `X`, exactly in canonical numeric order. |
+| `f0`–`f11` | required | Numeric; infinite values forbidden. Missingness is reported and handled only under a predeclared policy. Physical storage is `float64` for all twelve columns; semantic type is not uniform — see [Physical storage vs. semantic feature type](#physical-storage-vs-semantic-feature-type) below. | `X`, exactly in canonical column order. |
 | `treatment` | required | Complete binary values in `{0,1}`; labels are never silently remapped or imputed. | `T`, treatment assignment; forbidden from `X`. |
 | `conversion` | required | Complete binary values in `{0,1}`; labels are never silently remapped or imputed. | `Y`, primary outcome; forbidden from `X`. |
 | `visit` | optional | If used under D02, complete binary values in `{0,1}`; retained without using it to define `X`, `T`, primary `Y=conversion`, or the primary population. | Secondary robustness outcome; otherwise descriptive audit field. |
@@ -56,6 +56,27 @@ Any other mapping is a contract violation, not an experimental variant.
 while `visit` and `exposure` are treated conservatively as post-assignment
 variables. Primary-source definitions and timestamps are still required. This
 uncertainty strengthens, rather than relaxes, their exclusion from `X`.
+
+## Physical storage vs. semantic feature type
+
+Physical storage dtype and semantic feature type are separate contracts.
+Every `f0`–`f11` column is stored as `float64` in raw and processed form; that
+storage fact does not by itself make a column continuous or ordinal.
+
+Per decision D32, the publisher-defined semantic split within `X` is:
+
+| Semantic type | Columns | Representation implication |
+|---|---|---|
+| Continuous | `f0`, `f2`, `f7`, `f10` | Used directly as numeric model input; eligible for mean/SMD/variance-style diagnostics and quantile summaries. |
+| Categorical | `f1`, `f3`, `f4`, `f5`, `f6`, `f8`, `f9`, `f11` | Anonymized numeric tokens with **no ordinal interpretation**. Numeric magnitude, mean, variance, and SMD over the raw token value are not meaningful. Requires a categorical-aware model representation (document 05 / `ADR-base-learner.md` for LightGBM's native categorical handling); Causal Forest has no LightGBM-equivalent native categorical support, and its representation is an open implementation decision tracked by `ADR-CF-implementation.md`, not decided here. |
+
+This split governs model input representation and diagnostic eligibility; it
+does not change the canonical column order, the raw/processed `float64`
+physical storage contract, or which columns belong to `X`. Treating all
+twelve columns as a single undifferentiated continuous/numeric block is
+rejected (D32). D17's base-learner rationale referred to "12 numeric
+features" as a column count, not a semantic characterization; D32 amends that
+characterization without reopening the LightGBM base-learner choice itself.
 
 ## Processed-data location and selection
 

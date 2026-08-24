@@ -14,10 +14,13 @@ The authority hierarchy is defined in the [documentation map](index.md):
 
 1. the owner-approved [decision register](decision_register.csv);
 2. the numbered causal, data, audit, duplicate, methodology, experiment, and
-   metric specifications;
-3. the [Sprint 1 plan](tasks/sprint1_spec_completion.md);
-4. ADR implementation details; and
-5. derived summaries and review reports.
+   metric specifications, and ACCEPTED ADR decisions;
+3. GitHub Issues as the current execution plan (MASTER #20 and Issues #4-#19);
+4. accepted task-specific empirical evidence;
+5. derived summaries (`README.md`, `AGENTS.md`/`CLAUDE.md`, this overview); and
+6. historical Sprint 1 closure records ([`tasks/sprint1_spec_completion.md`](tasks/sprint1_spec_completion.md),
+   `sprint1_spec_review.md`, `sprint1_freeze_checklist.md`), frozen at Sprint 1
+   close and not descriptive of current Sprint 2+ status.
 
 This file creates no project decision. When it conflicts with a higher-authority
 source, that source controls and this overview must be corrected.
@@ -77,8 +80,13 @@ They are not current empirical results.
 
 LightGBM is a provisional default base-learner framework for methodology-approved
 components. Exact objectives, hyperparameters, stability, and scale behavior
-require Sprint 2 evidence. A Python–R or other cross-language Causal Forest bridge
-remains deferred unless its ADR activation condition is met.
+require Sprint 2 evidence. Per decision D32, `f0`,`f2`,`f7`,`f10` are continuous
+and `f1`,`f3`,`f4`,`f5`,`f6`,`f8`,`f9`,`f11` are categorical numeric tokens with
+no ordinal interpretation; LightGBM components use a category-aware
+representation accordingly, and Causal Forest's categorical representation is a
+separate, currently unresolved implementation decision. A Python–R or other
+cross-language Causal Forest bridge remains deferred unless its ADR activation
+condition is met.
 
 ## Experiment and test boundary
 

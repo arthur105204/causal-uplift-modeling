@@ -13,6 +13,14 @@ are never predictors or conditioning variables.
 Every uplift score estimates a conditional average contrast. No method produces
 an observed true ITE, and empirical PEHE against true ITE is prohibited.
 
+D32 governs how `X` is *represented* to each estimator without changing what
+`X` is: four features (`f0`, `f2`, `f7`, `f10`) are continuous and eight
+(`f1`, `f3`, `f4`, `f5`, `f6`, `f8`, `f9`, `f11`) are categorical numeric
+tokens with no ordinal interpretation. Every estimator below that consumes `X`
+must use a representation consistent with that split; a representation is
+estimator-specific implementation detail governed by the applicable ADR, not a
+change to the estimator's role, formula, or scope in this document.
+
 ## Estimator portfolio and status
 
 | Method | Decision status | Role | Score or estimand |
@@ -65,7 +73,9 @@ contrast lies in `[-1,1]`. Treatment is used to partition arms, never as a membe
 of `X`.
 
 The base-learner choice is controlled by
-[ADR-base-learner](adr/ADR-base-learner.md).
+[ADR-base-learner](adr/ADR-base-learner.md). Both arm-specific surfaces use
+D32 category-aware LightGBM representation (native categorical handling for
+the eight categorical features; the four continuous features remain numeric).
 
 ### X-Learner
 
@@ -77,7 +87,8 @@ whether a frozen implementation is eligible for held-out scoring.
 
 #### Inputs
 
-- X: exactly f0–f11
+- X: exactly f0–f11, represented per D32 (continuous numeric / categorical
+  native representation) for the LightGBM nuisance and effect stages
 - T: treatment assignment
 - Y: conversion for the primary analysis
 
@@ -133,6 +144,9 @@ be selected using test results.
   predictions.
 - Five-fold cross-fitting is a predeclared sensitivity or promotion
   candidate, not an automatic requirement.
+- Any D32 categorical representation state (e.g., a learned category
+  vocabulary) is fit on a fold's training side only and applied unchanged to
+  that fold's out-of-fold side; it never uses that fold's held-out rows.
 
 #### Required tests
 
@@ -271,6 +285,15 @@ gate fails, the failure evidence must be retained and a new owner-approved defer
 decision must name the concrete failed gates before Causal Forest can be removed
 from the planned Sprint 2 portfolio. A Python–R or other cross-language bridge
 remains **DEFERRED** unless the implementation ADR proves it is required.
+
+D32 applies to Causal Forest's `X` the same way it applies to every other
+estimator, but Causal Forest has no LightGBM-equivalent native categorical
+representation. The correctness gate above must therefore reject a raw
+`f0`–`f11` frame passed directly as if all twelve columns were continuous.
+The concrete categorical representation (encoding scheme and its
+memory/runtime cost at the training scale) is an unresolved implementation
+decision tracked by [ADR-CF-implementation](adr/ADR-CF-implementation.md); it
+is not selected by this document and must not be guessed.
 
 ## Cross-fitting policy
 

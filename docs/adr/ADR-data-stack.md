@@ -80,6 +80,13 @@ settings, and primary analytical precision. Future explicit casts must also be
 recorded. Precision sensitivities remain separate from the primary population
 and interpretation.
 
+D32's continuous/categorical semantic split (`f0`,`f2`,`f7`,`f10` continuous;
+`f1`,`f3`,`f4`,`f5`,`f6`,`f8`,`f9`,`f11` categorical) is a modeling-input
+representation concern for estimator-specific consumers, not a change to this
+ADR's raw/processed `float64` physical storage contract. Raw and processed
+`f0`–`f11` remain `float64` in Parquet for all twelve columns regardless of
+semantic type.
+
 ## Scale failure
 
 D30 defines the `SMOKE → [RESOURCE GATE(S) if required] → FULL`

@@ -38,6 +38,16 @@ role, and does not authorize a held-out comparison. The exact LightGBM package,
 configuration, objectives, and serialization behavior remain
 `OPEN_FOR_SPRINT2`.
 
+Per D32, `X` is not a uniform numeric block: `f0`, `f2`, `f7`, `f10` are
+continuous and `f1`, `f3`, `f4`, `f5`, `f6`, `f8`, `f9`, `f11` are categorical
+numeric tokens with no ordinal interpretation. Every LightGBM component listed
+above must use LightGBM's native categorical representation for the
+categorical group and plain numeric representation for the continuous group;
+passing all twelve columns as an undifferentiated continuous/numeric matrix is
+not a conforming implementation of this ADR. D17's "12 numeric features"
+rationale characterized column count and scale, not per-column semantic type;
+D32 is the authoritative semantic characterization.
+
 ## Objective contract
 
 - A model trained on factual binary `conversion` or another authorized binary
@@ -77,6 +87,10 @@ Before the pre-test executable freeze, Sprint 2 must produce versioned evidence
 that:
 
 - every model receives exactly its authorized inputs and objective;
+- every model uses D32 category-aware representation, with any learned
+  categorical vocabulary fit on training data only (or a fold's training side
+  only, for cross-fitted components) and reused unchanged on the
+  corresponding validation/held-out/out-of-fold rows;
 - probability and effect outputs satisfy document 03's validity rules;
 - X-Learner and any promoted DR-Learner use the required out-of-fold nuisance
   construction;

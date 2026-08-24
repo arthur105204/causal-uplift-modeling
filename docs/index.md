@@ -7,11 +7,20 @@ When documents conflict, apply this precedence:
 1. owner-approved [`decision_register.csv`](decision_register.csv);
 2. numbered causal, data, audit, duplicate, methodology, experiment, and metric
    specifications, with documents 01, 02, and 06 controlling their named
-   contracts;
-3. [Sprint 1 specification-completion plan](tasks/sprint1_spec_completion.md);
-4. ADR implementation decisions and gates;
-5. derived README, overview, literature routing, and reproducibility guidance;
-6. review reports and freeze checklists.
+   contracts, and ACCEPTED ADR decisions in `adr/`;
+3. GitHub Issues as the current execution plan — [MASTER #20][master-issue] is
+   the authoritative task-to-notebook overview, individual Issues #4-#19 are
+   task-scoped execution specs, and neither may silently redefine tier 1/2;
+4. accepted task-specific empirical evidence under `outputs/runs/<run_id>/`;
+5. derived README, `AGENTS.md`/`CLAUDE.md`, overview, literature routing, and
+   reproducibility guidance;
+6. historical Sprint 1 closure records — [`sprint1_spec_review.md`](sprint1_spec_review.md),
+   [`sprint1_freeze_checklist.md`](sprint1_freeze_checklist.md), and
+   [`tasks/sprint1_spec_completion.md`](tasks/sprint1_spec_completion.md) — frozen
+   at Sprint 1 close and retained as historical evidence, not live plans; they
+   do not describe or govern current Sprint 2+ execution.
+
+[master-issue]: https://github.com/arthur105204/causal-uplift-modeling/issues/20
 
 A lower-authority document cannot silently defer, remove, or redefine an
 owner-approved decision.
@@ -35,9 +44,16 @@ independent decision.
 
 ## Sprint plan
 
-[`tasks/sprint1_spec_completion.md`](tasks/sprint1_spec_completion.md) defines
-Sprint 1 scope, deliverables, acceptance criteria, and later-phase deferrals. It
-cannot override the register or numbered specifications.
+Current execution planning lives in GitHub Issues: [MASTER #20][master-issue]
+carries the task graph, the current Kaggle multi-session execution model, the
+public-notebook mapping, and per-Issue links; individual Issues #4-#19 carry
+task-scoped GOAL/INPUT/PROCESS/OUTPUT/VERIFICATION/DEPENDENCIES/DEFINITION OF
+DONE specs. Neither overrides the register or numbered specifications.
+
+[`tasks/sprint1_spec_completion.md`](tasks/sprint1_spec_completion.md) defined
+Sprint 1 scope, deliverables, acceptance criteria, and later-phase deferrals.
+It is closed and superseded by the above for current execution planning; it
+remains as the historical record of what Sprint 1 delivered.
 
 ## ADRs
 
@@ -56,36 +72,58 @@ estimand, population, or test boundary.
 ## Derived documents
 
 - [`README.md`](../README.md): public project orientation and phase status.
+- [`AGENTS.md`](../AGENTS.md): operating contract for agents working in this repository.
+- [`CLAUDE.md`](../CLAUDE.md): short pointer/command reference for Claude Code, deferring to
+  `AGENTS.md`.
 - [`00_project_overview.md`](00_project_overview.md): derived specification map.
 - [`literature_review_matrix.md`](literatures/literature_review_matrix.md): bounded research
   grounding and non-claims.
-- [`sprint1_spec_review.md`](sprint1_spec_review.md): final consistency review.
-- [`sprint1_freeze_checklist.md`](sprint1_freeze_checklist.md): row-level freeze
+
+## Historical Sprint 1 closure records
+
+Frozen at Sprint 1 close; retained as evidence of what was reviewed and
+accepted, not as live specifications of current Sprint 2+ status.
+
+- [`sprint1_spec_review.md`](sprint1_spec_review.md): Sprint 1 final consistency review.
+- [`sprint1_freeze_checklist.md`](sprint1_freeze_checklist.md): Sprint 1 row-level freeze
   decision evidence.
+- [`tasks/sprint1_spec_completion.md`](tasks/sprint1_spec_completion.md): Sprint 1 scope,
+  deliverables, and acceptance criteria.
 
 ## Change-control rule
 
 1. Change the highest-authority affected source first.
 2. Obtain owner approval when an accepted decision changes.
-3. Reconcile affected numbered specifications.
-4. Amend ADR implementation details without redefining higher decisions.
-5. Update README, overview, literature routing, review, and checklist last.
+3. Reconcile affected numbered specifications and ADRs.
+4. Reconcile MASTER #20 and affected individual GitHub Issues to match.
+5. Update README, `AGENTS.md`/`CLAUDE.md`, overview, and literature routing last.
 6. Run link, status, placeholder, local-path, secret, and cross-document scans
-   before declaring a freeze.
+   before declaring the change complete.
 
 Timestamp recency alone never resolves a conflict. Execution evidence and held-out
 results cannot retroactively rewrite a pre-test specification.
 
 ## Sprint 2+ execution workflow
 
-From Sprint 2 empirical work onward, notebooks are the primary human-readable
-research, execution, verification, evidence, and interpretation artifacts.
-Machine-readable evidence belongs under immutable
-`outputs/runs/<run_id>/`; reproducible inputs belong under `configs/`; and
-implementation decisions belong under `docs/adr/`.
+Kaggle is the primary heavy-compute environment; a full pipeline may span
+multiple Kaggle sessions connected by explicit, versioned, immutable
+artifacts under `outputs/runs/<run_id>/` rather than shared runtime state.
+Notebooks are the primary human-readable research, execution, verification,
+evidence, and interpretation artifacts — `kaggle/01_data_understanding.ipynb`
+through `kaggle/04_final_evaluation.ipynb` for the public reader-facing story
+(see MASTER #20 for the task-to-notebook mapping), and `notebooks/internal/`
+for heavy or held-out-sensitive computation that is not reader-facing.
+Reproducible inputs belong under `configs/`, and implementation decisions
+belong under `docs/adr/`.
 
 `src/`, `tests/`, and `scripts/` are optional supporting infrastructure. They are
 created only when reuse, automated regression verification, an authoritative
 contract, or avoidance of unreasonable notebook duplication justifies them.
 Notebook-first does not weaken manifests, hashes, model/prediction retention,
 test isolation, or any numbered contract.
+
+D32 (`decision_register.csv`) is the authoritative feature-semantics decision:
+`f0`,`f2`,`f7`,`f10` are continuous and `f1`,`f3`,`f4`,`f5`,`f6`,`f8`,`f9`,`f11`
+are categorical numeric tokens. It governs model-input representation across
+`docs/02`, `docs/03`, `docs/05`, `docs/06`, and the base-learner/Causal-Forest
+ADRs without changing the canonical `X = f0...f11` definition itself.

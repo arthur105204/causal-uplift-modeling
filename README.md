@@ -76,16 +76,17 @@ hyperparameters, seeds, ranking rules, or claims.
 ## Repository structure
 
 ```text
-kaggle/        public Kaggle notebook story (01 data understanding through 04 final evaluation)
-configs/       non-secret example manifests/configurations
-data/          local raw and processed data; only data/README.md is versioned
-docs/          decision register, specifications, ADRs, Sprint plan, and reviews
-notebooks/legacy/  retained prior evidence, kept for provenance; inherited, not re-derived
-outputs/       immutable run-scoped machine-readable empirical evidence; ignored by Git
-src/           optional reusable machinery when concretely justified
-tests/         optional or task-required automated regression verification when justified
-scripts/       optional supporting automation when concretely justified
-archive/       historical local material; ignored and non-authoritative
+kaggle/            public Kaggle notebook story (01 data understanding through 04 final evaluation)
+notebooks/internal/  heavy or held-out-sensitive computation; not reader-facing
+notebooks/legacy/     retained prior evidence, kept for provenance; inherited, not re-derived
+configs/            non-secret example manifests/configurations
+data/               local raw and processed data; only data/README.md is versioned
+docs/               decision register, specifications, ADRs, and historical Sprint 1 records
+outputs/            immutable run-scoped machine-readable empirical evidence; ignored by Git
+src/                optional reusable machinery when concretely justified
+tests/              optional or task-required automated regression verification when justified
+scripts/            optional supporting automation when concretely justified
+archive/            historical local material; ignored and non-authoritative
 ```
 
 The project is notebook-first, not notebook-only. The relevant notebook must
@@ -113,10 +114,17 @@ The authority hierarchy, specification map, and ADR statuses are maintained in
 
 ## Reproducibility
 
-Kaggle notebooks under `kaggle/` detect their environment and run against a
-Kaggle-attached input dataset or a local `data/raw/` copy with no other setup.
-For local development against the full data pipeline, dependencies and test
-commands are documented in [`CLAUDE.md`](CLAUDE.md#commands). No exact
+Kaggle is the primary heavy-compute environment, and a full pipeline does not
+have to fit inside one Kaggle notebook session. Expensive stages communicate
+through explicit, versioned, immutable artifacts under
+`outputs/runs/<run_id>/`: a downstream stage re-derives and checksum-verifies
+its input from a declared upstream run rather than depending on shared
+in-memory state, so stages can run in different Kaggle sessions, on different
+machines, or months apart and still reproduce the same chain. Kaggle notebooks
+under `kaggle/` detect their environment and run against a Kaggle-attached
+input dataset or a local `data/raw/` copy with no other setup. For local
+development against the full data pipeline, dependencies and test commands are
+documented in [`CLAUDE.md`](CLAUDE.md#commands). No exact
 interpreter/package/platform lockfile is frozen at this stage; environment
 identity for consequential runs is captured in the corresponding immutable run
-manifest under `outputs/runs/<run_id>/`, not in this file.
+manifest, not in this file.
