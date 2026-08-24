@@ -161,6 +161,12 @@
         "diagnostic_action (generic threshold-banding primitive)"
       ]
     },
+    "d33_scope_amendment": {
+      "date": "2026-08-24",
+      "decision": "D33",
+      "p0_status": "OPTIONAL_P1_NOT_REQUIRED_BEFORE_T16",
+      "reason": "This entire randomization_calibration block (the 2,000-draw design-null permutation protocol below, and any X->T predictability calibration built on it) is an optional/P1 internal diagnostic per D33, not a T16/pre-test-freeze precondition. Randomization evidence comes primarily from the documented publisher/experimental assignment mechanism, not from this calibration. Mandatory T03 evidence instead: descriptive ED-03/ED-03b balance (non-blocking, reported as INFO) and ED-05 arm support (a genuine STOP/UNSUPPORTED_METRIC gate). This block is retained, not deleted, for anyone who chooses to run the optional protocol."
+    },
     "master_seed": 42,
     "seed_derivation": "numpy-seedsequence-pcg64-spawn-key-v1",
     "replication_index_origin": 0,
