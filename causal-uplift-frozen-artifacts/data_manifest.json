@@ -1,0 +1,123 @@
+{
+  "code_identity": {
+    "members": {
+      "notebooks/02_data_engineering_pipeline.ipynb#sources": "7fdb5f03fed6c2c063c528f59c95fdfd63d8ebb0ec347fa131cc0982e2484e09",
+      "src/data.py": "e11dd7f153603d0f0f5aa4ceb6e20f30530830f5f7343f1097bf25dfa11b993e",
+      "tests/test_data.py": "65c6a2ec70b723e0a2b3c535ff5306a9d7e8107e4595a3bbf91e1fde1cfe315a"
+    },
+    "sha256": "389f1184107795df1cb9bc75780dc685758a17000de3e71cc68475f980df1fc6"
+  },
+  "conversion": {
+    "analytical_precision": "float64",
+    "compression": "zstd",
+    "format": "parquet",
+    "row_group_size": 1048576
+  },
+  "created_at_utc": "2026-08-12T05:39:14.918453+00:00",
+  "dataset_name": "CRITEO-UPLIFTv2.1",
+  "feature_columns": [
+    "f0",
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5",
+    "f6",
+    "f7",
+    "f8",
+    "f9",
+    "f10",
+    "f11"
+  ],
+  "forbidden_model_columns": [
+    "treatment",
+    "conversion",
+    "visit",
+    "exposure",
+    "_source_row_id"
+  ],
+  "manifest_role": "IMMUTABLE_RUN_SNAPSHOT",
+  "processed_columns": [
+    "f0",
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5",
+    "f6",
+    "f7",
+    "f8",
+    "f9",
+    "f10",
+    "f11",
+    "treatment",
+    "conversion",
+    "visit",
+    "exposure",
+    "_source_row_id"
+  ],
+  "processed_target": {
+    "actual_identity_artifact": "audit/t01_validation.json",
+    "generation_mode": "GENERATED_BY_THIS_RUN",
+    "path": "data/processed/criteo-uplift-v2.1-t01.parquet"
+  },
+  "raw_columns": [
+    "f0",
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5",
+    "f6",
+    "f7",
+    "f8",
+    "f9",
+    "f10",
+    "f11",
+    "treatment",
+    "conversion",
+    "visit",
+    "exposure"
+  ],
+  "release_id": "criteo-research-uplift-v2.1",
+  "run_id": "t01_production_20260812T053914Z_918453",
+  "schema_version": "criteo-uplift-v2.1-t01-v1",
+  "selector_sha256_at_run_start": "fab1698c1237bbd051018c3ef2c44a648b50ffab86b26cc6db2a5e30cd894813",
+  "source": {
+    "dataset_name": "CRITEO-UPLIFTv2.1",
+    "header": [
+      "f0",
+      "f1",
+      "f2",
+      "f3",
+      "f4",
+      "f5",
+      "f6",
+      "f7",
+      "f8",
+      "f9",
+      "f10",
+      "f11",
+      "treatment",
+      "conversion",
+      "visit",
+      "exposure"
+    ],
+    "raw_compressed": {
+      "path": "data/raw/criteo-uplift-v2.1.csv.gz",
+      "sha256": "2716e1bf0fd157a93b5bf86924d9088419dfbac2022c6cd90030220634f616dc",
+      "size_bytes": 311422618
+    },
+    "raw_csv": {
+      "path": "data/raw/criteo-uplift-v2.1.csv",
+      "sha256": "e4d7c710ca1f38e523309d0f8a0745d1b53e7392d51f20d1088b6cfeaef222ef",
+      "size_bytes": 3248115221
+    },
+    "status": "PASS"
+  },
+  "source_row_identity": {
+    "definition": "zero-based data-row ordinal in the checksum-identified canonical decompressed CSV, excluding the header",
+    "field": "_source_row_id",
+    "model_feature": false
+  }
+}
