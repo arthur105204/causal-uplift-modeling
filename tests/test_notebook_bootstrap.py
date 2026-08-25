@@ -16,17 +16,30 @@ from pathlib import Path
 
 import pytest
 
-NOTEBOOKS = sorted(Path(__file__).resolve().parent.parent.glob("notebooks/*.ipynb"))
+NOTEBOOK_DIR = Path(__file__).resolve().parent.parent / "notebooks"
+NOTEBOOKS = sorted(NOTEBOOK_DIR.glob("*.ipynb"))
+# 01-04 are the methodology notebooks and must share one identical bootstrap.
+# kaggle_execution.ipynb is the one-click runner: its bootstrap is a deliberate
+# superset (it additionally offers to git-clone the repo on Kaggle), so it is
+# held to the same *behaviour* but not to byte-identical source.
+METHODOLOGY_NOTEBOOKS = [p for p in NOTEBOOKS if p.name[:2].isdigit()]
 
 
 def _bootstrap_source(notebook_path: Path) -> str:
-    """The first code cell of a notebook is its bootstrap."""
+    """The code cell that resolves REPO_ROOT.
+
+    Deliberately not "the first code cell" -- the execution notebook opens
+    with a run-parameters cell, and a positional assumption here would test
+    the wrong thing while still passing.
+    """
 
     notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
     for cell in notebook["cells"]:
         if cell["cell_type"] == "code":
-            return "".join(cell["source"])
-    raise AssertionError(f"{notebook_path.name} has no code cell")
+            source = "".join(cell["source"])
+            if "REPO_ROOT" in source:
+                return source
+    raise AssertionError(f"{notebook_path.name} has no cell defining REPO_ROOT")
 
 
 def _run_bootstrap(source: str, cwd: Path) -> Path:
@@ -83,13 +96,40 @@ def test_bootstrap_fails_loudly_when_repo_is_absent(notebook_path: Path, tmp_pat
 
     empty = tmp_path / "empty"
     empty.mkdir()
-    with pytest.raises(RuntimeError, match="repository root"):
+    with pytest.raises(RuntimeError, match="(?i)repositor"):
         _run_bootstrap(_bootstrap_source(notebook_path), empty)
 
 
-def test_every_notebook_ships_the_same_bootstrap() -> None:
-    """All four must share one bootstrap; a drifting copy is how one notebook
+def test_methodology_notebooks_ship_the_same_bootstrap() -> None:
+    """01-04 must share one bootstrap; a drifting copy is how one notebook
     ends up broken on Kaggle while the others work."""
 
-    sources = {p.name: _bootstrap_source(p) for p in NOTEBOOKS}
+    sources = {p.name: _bootstrap_source(p) for p in METHODOLOGY_NOTEBOOKS}
     assert len(set(sources.values())) == 1, f"bootstrap differs across notebooks: {sorted(sources)}"
+
+
+def test_execution_notebook_exists_and_orchestrates_rather_than_reimplements() -> None:
+    """The one-click runner must call into src/, not carry its own copy of the
+    modelling code -- that duplication is exactly what it exists to avoid."""
+
+    path = NOTEBOOK_DIR / "kaggle_execution.ipynb"
+    assert path.is_file(), "notebooks/kaggle_execution.ipynb is missing"
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    source = "\n".join("".join(c["source"]) for c in notebook["cells"] if c["cell_type"] == "code")
+
+    for imported in ("fit_response_model", "fit_t_learner", "fit_x_learner", "fit_causal_forest", "evaluate_ranking"):
+        assert imported in source, f"execution notebook does not use src.{imported}"
+    # No redefinition of the modelling primitives.
+    for reimplemented in ("def fit_t_learner", "def fit_x_learner", "def fit_causal_forest", "def evaluate_ranking"):
+        assert reimplemented not in source, f"execution notebook reimplements {reimplemented!r}"
+
+
+def test_execution_notebook_passes_the_raw_frame_to_the_x_learner() -> None:
+    """Guards the fold-local preprocessing fix at the call site: handing
+    fit_x_learner a globally-transformed frame is the leak this project
+    already fixed once."""
+
+    path = NOTEBOOK_DIR / "kaggle_execution.ipynb"
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    source = "\n".join("".join(c["source"]) for c in notebook["cells"] if c["cell_type"] == "code")
+    assert "fit_x_learner(train_frame" in source, "X-Learner must receive the raw train frame"
