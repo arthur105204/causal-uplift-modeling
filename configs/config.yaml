@@ -1,0 +1,64 @@
+# Reproducible configuration for the CRITEO-UPLIFTv2.1 causal-uplift pipeline.
+#
+# Every key here is consumed by src/ or the notebooks. tests/test_config.py
+# asserts these values stay in sync with the code defaults, so this file
+# cannot drift into decoration.
+#
+# See README.md "Methodology notes" for the reasoning behind the categorical
+# feature handling (D32), the X-Learner fold-local preprocessing fix, and the
+# Causal Forest categorical encoding.
+
+seed: 42
+
+data:
+  csv_filename: criteo-uplift-v2.1.csv
+  treatment_column: treatment
+  primary_outcome: conversion
+  secondary_outcome: visit
+  # D32: physical float64 storage does not imply continuous/ordinal semantics.
+  continuous_features: [f0, f2, f7, f10]
+  categorical_features: [f1, f3, f4, f5, f6, f8, f9, f11]
+
+split:
+  train_fraction: 0.70        # model fitting
+  validation_fraction: 0.15   # early stopping and model selection
+  test_fraction: 0.15         # untouched until final evaluation
+  stratify_by: [treatment, conversion]   # joint (T, Y) stratification
+
+lightgbm:
+  # Base-learner config for the response model, T-Learner's mu1/mu0, and
+  # X-Learner's nuisance stage -- identical across arms.
+  objective: binary
+  learning_rate: 0.1
+  num_leaves: 31
+  min_data_in_leaf: 20
+  num_boost_round_cap: 2000
+  early_stopping_rounds: 50
+
+xlearner:
+  cross_fitting_folds: 2
+  # Effect stage (tau1/tau0): fixed round count, no early-stopping search.
+  effect_num_boost_round: 100
+  # Inner held-out slice used for the nuisance models' early stopping.
+  inner_validation_fraction: 0.2
+
+causal_forest:
+  n_estimators: 100      # must be exactly divisible by subforest_size
+  honest: true           # required for valid inference
+  inference: false
+  min_samples_leaf: 5
+  max_samples: 0.45
+  subforest_size: 4
+  n_jobs: 1              # required for bit-identical reproducibility
+  # econml has no native categorical support: frequency-capped top-K one-hot
+  # + OTHER bucket. K is chosen for resource feasibility, never by performance.
+  # Default is 8 (the safe end of the resource ladder, ~76 encoded columns):
+  # at full CRITEO scale (~9.8M TRAIN rows), K=32 needs a dense encoded
+  # matrix of ~21GB before CausalForest's own fit-time overhead, which risks
+  # exhausting memory on a standard Kaggle kernel. Raise K only after an
+  # explicit, measured memory/runtime benchmark at the target scale -- this
+  # value is not automatically stepped down at runtime.
+  categorical_top_k: 8
+
+evaluation:
+  uplift_at_k: [0.10, 0.20, 0.30, 0.50, 1.00]

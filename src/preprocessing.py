@@ -1,82 +1,190 @@
-"""T04 preprocessing / feature-engineering contract.
+"""Feature preprocessing and train/validation splitting.
 
-Default posture is no-op, per Issue #5: `X` stays exactly the ordered
-`f0`-`f11` columns at primary `float64` precision, and missing values pass
-through unimputed for LightGBM's native handling (docs/06). No transform is
-fit on anything but train rows.
+Two model families need two different representations of the same
+categorical features (D32/D34), and both are fit on TRAIN ONLY then reused
+unchanged on validation:
 
-T03-A/T03-B evidence already shows zero missing values across the released
-population, so there is currently nothing to impute even in principle; the
-identity transform below exists so the fit-on-train-only boundary and the
-column/dtype contract are enforced and tested regardless. An estimator-
-specific branch is added only if a future learner's API genuinely cannot
-accept this shared representation (T04.5) -- none does yet, because no
-learner has been implemented.
+- LightGBM (response model, T-Learner, X-Learner): pandas categorical dtype,
+  using LightGBM's native categorical split handling.
+- Causal Forest (econml.grf.CausalForest): no native categorical support, so
+  categorical features are frequency-capped top-K one-hot encoded, with a
+  trailing OTHER bucket for everything outside the top K (including unseen
+  categories at transform time). A single ordinal/rank column is deliberately
+  avoided -- that would reintroduce the ordinal-structure bug D32 exists to
+  fix. K is chosen for resource feasibility, never by model performance.
 """
 
 from __future__ import annotations
 
-from typing import Any
-
 import pandas as pd
+from pandas.api.types import CategoricalDtype
+from sklearn.model_selection import train_test_split
 
-from src.data import DataContractError, FEATURE_COLUMNS
+from src.data import (
+    CATEGORICAL_FEATURES,
+    CONTINUOUS_FEATURES,
+    FEATURE_COLUMNS,
+    PRIMARY_OUTCOME,
+    TREATMENT_COLUMN,
+)
 
-CONTRACT_VERSION = "t04-preprocessing-v1"
+
+def _require_features(frame: pd.DataFrame) -> None:
+    missing = sorted(set(FEATURE_COLUMNS).difference(frame.columns))
+    if missing:
+        raise ValueError(f"Frame is missing required feature columns: {missing}")
 
 
-class PreprocessingContractError(DataContractError):
-    """Raised when the T04 preprocessing contract is violated."""
-
-
-class IdentityFeatureTransform:
-    """The frozen T04 transform: select `f0`-`f11`, in order, at `float64`.
-
-    ``fit`` is a no-op today (no learned state exists) but is kept explicit so
-    a future learner-specific transform can share the same fit-on-train-only
-    calling convention without a breaking change.
-    """
+class LightGBMFeatureTransform:
+    """Continuous features stay float64; categorical features become a
+    train-fitted pandas categorical dtype so LightGBM uses native categorical
+    splits instead of treating the token as an ordered number."""
 
     def __init__(self) -> None:
         self._fitted = False
+        self._category_dtypes: dict[str, CategoricalDtype] = {}
 
-    def fit(self, train_frame: pd.DataFrame) -> "IdentityFeatureTransform":
-        missing = sorted(set(FEATURE_COLUMNS).difference(train_frame.columns))
-        if missing:
-            raise PreprocessingContractError(f"Training frame is missing columns: {missing}")
+    def fit(self, train_frame: pd.DataFrame) -> "LightGBMFeatureTransform":
+        _require_features(train_frame)
+        self._category_dtypes = {
+            feature: CategoricalDtype(
+                categories=pd.Index(train_frame[feature].dropna().astype("float64").unique()).sort_values(),
+                ordered=False,
+            )
+            for feature in CATEGORICAL_FEATURES
+        }
         self._fitted = True
         return self
 
     def transform(self, frame: pd.DataFrame) -> pd.DataFrame:
         if not self._fitted:
-            raise PreprocessingContractError("transform() called before fit()")
-        missing = sorted(set(FEATURE_COLUMNS).difference(frame.columns))
-        if missing:
-            raise PreprocessingContractError(f"Frame is missing columns: {missing}")
-        selected = frame.loc[:, list(FEATURE_COLUMNS)].astype("float64")
-        if tuple(selected.columns) != FEATURE_COLUMNS:
-            raise PreprocessingContractError("Transformed output column order drifted from the frozen contract")
-        return selected
+            raise RuntimeError("transform() called before fit()")
+        _require_features(frame)
+        output = frame.loc[:, list(FEATURE_COLUMNS)].copy()
+        for feature in CONTINUOUS_FEATURES:
+            output[feature] = output[feature].astype("float64")
+        for feature in CATEGORICAL_FEATURES:
+            output[feature] = pd.Categorical(
+                output[feature].astype("float64"), dtype=self._category_dtypes[feature]
+            )
+        return output
 
     def fit_transform(self, train_frame: pd.DataFrame) -> pd.DataFrame:
         return self.fit(train_frame).transform(train_frame)
 
 
-def preprocessing_contract() -> dict[str, Any]:
-    """Serializable, content-hashable description of the frozen T04 contract."""
+CATEGORICAL_ENCODER_K_LADDER = (32, 16, 8)
 
-    return {
-        "contract_version": CONTRACT_VERSION,
-        "feature_columns": list(FEATURE_COLUMNS),
-        "precision": "float64",
-        "missing_value_policy": "preserve_for_native_lightgbm_handling",
-        "imputation": "none",
-        "missingness_indicator_features": "none",
-        "fit_boundary": "train_only",
-        "learned_state": "none",
-        "estimator_specific_branches": {},
-        "held_out_application_rule": (
-            "apply the identical fitted transform to held-out features at T17; "
-            "no refitting, no held-out-informed adjustment"
-        ),
-    }
+
+def _category_column(feature: str, value: float) -> str:
+    return f"{feature}__cat_{value!r}"
+
+
+def _other_column(feature: str) -> str:
+    return f"{feature}__OTHER"
+
+
+class CausalForestCategoricalEncoder:
+    """Frequency-capped top-K + OTHER one-hot encoding for Causal Forest's
+    categorical features. Fit on TRAIN only, reused unchanged afterwards.
+    Continuous features pass through unchanged."""
+
+    def __init__(self, k: int = 32) -> None:
+        if k not in CATEGORICAL_ENCODER_K_LADDER:
+            raise ValueError(f"k={k!r} must be one of {CATEGORICAL_ENCODER_K_LADDER}")
+        self.k = k
+        self._fitted = False
+        self._vocabularies: dict[str, list[float]] = {}
+
+    def fit(self, train_frame: pd.DataFrame) -> "CausalForestCategoricalEncoder":
+        _require_features(train_frame)
+        vocabularies = {}
+        for feature in CATEGORICAL_FEATURES:
+            values = train_frame[feature].astype("float64")
+            counts = values.value_counts()
+            # Deterministic tie-break: (count desc, value asc).
+            ranked = sorted(counts.index.tolist(), key=lambda v: (-counts[v], v))
+            vocabularies[feature] = sorted(float(v) for v in ranked[: self.k])
+        self._vocabularies = vocabularies
+        self._fitted = True
+        return self
+
+    def transform(self, frame: pd.DataFrame) -> pd.DataFrame:
+        if not self._fitted:
+            raise RuntimeError("transform() called before fit()")
+        _require_features(frame)
+        blocks = [frame[[feature]].astype("float64") for feature in CONTINUOUS_FEATURES]
+        for feature in CATEGORICAL_FEATURES:
+            vocab = self._vocabularies[feature]
+            values = frame[feature].astype("float64")
+            in_vocab = values.isin(vocab)
+            block = {_category_column(feature, v): (values == v).astype("float64") for v in vocab}
+            block[_other_column(feature)] = (~in_vocab).astype("float64")
+            blocks.append(pd.DataFrame(block, index=frame.index))
+        return pd.concat(blocks, axis=1)
+
+    def fit_transform(self, train_frame: pd.DataFrame) -> pd.DataFrame:
+        return self.fit(train_frame).transform(train_frame)
+
+
+SPLIT_SEED = 42
+TRAIN_FRACTION = 0.70
+VALIDATION_FRACTION = 0.15
+TEST_FRACTION = 0.15
+
+
+def _strata(frame: pd.DataFrame) -> pd.Series:
+    """Joint (treatment, conversion) stratum label, so both arms and both
+    outcome classes stay represented in every partition."""
+
+    return frame[TREATMENT_COLUMN].astype(str) + "_" + frame[PRIMARY_OUTCOME].astype(str)
+
+
+def train_validation_test_split(
+    frame: pd.DataFrame,
+    *,
+    train_fraction: float = TRAIN_FRACTION,
+    validation_fraction: float = VALIDATION_FRACTION,
+    test_fraction: float = TEST_FRACTION,
+    seed: int = SPLIT_SEED,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Seeded three-way split, joint-(treatment, conversion) stratified at
+    both stages.
+
+    train      -- model fitting
+    validation -- early stopping and model selection
+    test       -- untouched until the final evaluation
+
+    Done in two stages: hold out `test` first, then carve `validation` out of
+    the remainder at the rate that makes the overall proportions come out
+    right. Stratifying at each stage keeps the arm/outcome mix consistent
+    across all three partitions.
+    """
+
+    total = train_fraction + validation_fraction + test_fraction
+    if abs(total - 1.0) > 1e-9:
+        raise ValueError(f"Split fractions must sum to 1.0, got {total}")
+    for name, value in (
+        ("train_fraction", train_fraction),
+        ("validation_fraction", validation_fraction),
+        ("test_fraction", test_fraction),
+    ):
+        if not 0.0 < value < 1.0:
+            raise ValueError(f"{name} must be strictly between 0 and 1, got {value}")
+
+    development, test_frame = train_test_split(
+        frame, test_size=test_fraction, random_state=seed, stratify=_strata(frame)
+    )
+    # validation as a share of what's left after removing the test partition
+    validation_share = validation_fraction / (train_fraction + validation_fraction)
+    train_frame, val_frame = train_test_split(
+        development,
+        test_size=validation_share,
+        random_state=seed,
+        stratify=_strata(development),
+    )
+    return (
+        train_frame.reset_index(drop=True),
+        val_frame.reset_index(drop=True),
+        test_frame.reset_index(drop=True),
+    )
