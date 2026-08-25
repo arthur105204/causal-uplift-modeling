@@ -57,7 +57,13 @@ README.md
 2. **Attach the data**: any Kaggle dataset containing
    `criteo-uplift-v2.1.csv`. The dataset slug is *not* hardcoded — every
    attached input is searched.
-3. **Run the notebooks in order:**
+3. **Dependencies**: Kaggle's stock image does not include `econml`, and may
+   not match the pinned `lightgbm` version. Notebooks `02`–`04` (every
+   notebook that imports `src.models`) each start with a
+   `%pip install -q econml==0.17.0 lightgbm==4.7.0` cell, right after the
+   repo-root bootstrap — it's a no-op if the pinned versions are already
+   present. No manual install step is required; just let that cell run.
+4. **Run the notebooks in order:**
 
    | Notebook | Does |
    |---|---|
@@ -156,6 +162,22 @@ by comparing model performance across `K` values. Unbounded one-hot and
 target/effect encoding were both rejected: unbounded one-hot is infeasible at
 full data scale, and target/effect encoding would leak the outcome into the
 same matrix the forest uses to place its splits.
+
+The shipped default (`configs/config.yaml: causal_forest.categorical_top_k`)
+is **`K=8`** — the conservative end of the ladder, `8*(8+1)+4 = 76` encoded
+columns. This is a memory/fidelity tradeoff, not a free parameter: at `K=32`
+the encoded matrix is 268 columns, which at full CRITEO scale (~9.8M TRAIN
+rows) is a ~21GB dense `float64` matrix *before* `CausalForest.fit()`'s own
+honest-splitting and bootstrap overhead — a real OOM risk on a standard
+Kaggle kernel. `K=8` keeps every categorical feature resolved down to its 8
+most frequent levels (plus `OTHER`), which is coarser than LightGBM's native
+full-cardinality categorical splits used by the T-/X-Learner — so Causal
+Forest sees a lower-resolution categorical representation than the other
+estimators, a real cross-model comparability caveat worth keeping in mind
+when reading the final comparison in notebook `04`. Raising `K` back toward
+16 or 32 is possible via config, but should only be done after a measured
+memory/runtime benchmark at the target row count — the code does not step
+`K` down automatically if a higher value turns out to be infeasible.
 
 **Other standing assumptions:**
 - The estimand is assignment-based (intention-to-treat) CATE — models rank by

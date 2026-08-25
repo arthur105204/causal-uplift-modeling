@@ -41,6 +41,25 @@ def _as_array(values, dtype=np.float64) -> np.ndarray:
     return np.asarray(values, dtype=dtype)
 
 
+def _require_equal_length(**named_arrays: np.ndarray) -> None:
+    lengths = {name: len(values) for name, values in named_arrays.items()}
+    if len(set(lengths.values())) > 1:
+        raise ValueError(f"inputs must have equal length, got {lengths}")
+
+
+def _require_finite(name: str, values: np.ndarray) -> None:
+    if not np.isfinite(values).all():
+        raise ValueError(
+            f"{name} contains NaN or infinite values -- these would silently corrupt every "
+            "cumulative sum downstream instead of raising, so they are rejected up front"
+        )
+
+
+def _require_binary(name: str, values: np.ndarray) -> None:
+    if not np.isin(values, (0.0, 1.0)).all():
+        raise ValueError(f"{name} must be binary (0/1); got value(s) outside {{0, 1}}")
+
+
 @dataclass(frozen=True)
 class AteResult:
     ate: float
@@ -54,6 +73,11 @@ def compute_ate(treatment, outcome) -> AteResult:
     """ate = p1 - p0, with the unpooled normal difference-in-proportions interval."""
 
     treatment, outcome = _as_array(treatment), _as_array(outcome)
+    _require_equal_length(treatment=treatment, outcome=outcome)
+    _require_finite("treatment", treatment)
+    _require_finite("outcome", outcome)
+    _require_binary("treatment", treatment)
+    _require_binary("outcome", outcome)
     n1, n0 = int((treatment == 1).sum()), int((treatment == 0).sum())
     if n1 == 0 or n0 == 0:
         raise ValueError("ATE is undefined: an arm is empty")
@@ -83,6 +107,12 @@ class RankingMetrics:
 
 def evaluate_ranking(scores, treatment, outcome) -> RankingMetrics:
     scores, treatment, outcome = _as_array(scores), _as_array(treatment), _as_array(outcome)
+    _require_equal_length(scores=scores, treatment=treatment, outcome=outcome)
+    _require_finite("scores", scores)
+    _require_finite("treatment", treatment)
+    _require_finite("outcome", outcome)
+    _require_binary("treatment", treatment)
+    _require_binary("outcome", outcome)
     n = len(scores)
     if n == 0:
         raise ValueError("Empty evaluation population")
