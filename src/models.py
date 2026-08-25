@@ -228,10 +228,18 @@ def fit_x_learner(raw_train_frame, T_train, Y_train, *, seed: int = 42) -> XLear
 # inference, and n_jobs=1 is required for determinism (empirically verified --
 # n_jobs=2/-1 produced different predictions than n_jobs=1 with an identical
 # random_state).
+# max_depth=20 is a memory safety cap, not a capacity constraint: on full
+# CRITEO scale the unbounded default (max_depth=None) risked OOM on a
+# standard 30GB Kaggle kernel (empirically observed). min_samples_leaf=5
+# already limits how deep a well-behaved split needs to go; a benchmark under
+# this exact config measured tree depth reaching 32 well before that leaf
+# floor forced a stop, so 20 caps the pathological tail without binding on
+# typical splits.
 # ---------------------------------------------------------------------------
 
 CAUSAL_FOREST_CONFIG: dict[str, object] = {
     "n_estimators": 100,
+    "max_depth": 20,
     "honest": True,
     "inference": False,
     "min_samples_leaf": 5,

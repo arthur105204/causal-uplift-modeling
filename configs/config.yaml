@@ -44,6 +44,7 @@ xlearner:
 
 causal_forest:
   n_estimators: 100      # must be exactly divisible by subforest_size
+  max_depth: 20           # memory safety cap; unbounded (null) risked OOM at full CRITEO scale on a 30GB kernel
   honest: true           # required for valid inference
   inference: false
   min_samples_leaf: 5

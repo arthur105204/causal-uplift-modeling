@@ -59,7 +59,10 @@ def test_xlearner_section_matches_code() -> None:
 
 def test_causal_forest_section_matches_code() -> None:
     forest = CONFIG["causal_forest"]
-    for key in ("n_estimators", "honest", "inference", "min_samples_leaf", "max_samples", "subforest_size", "n_jobs"):
+    for key in (
+        "n_estimators", "max_depth", "honest", "inference", "min_samples_leaf",
+        "max_samples", "subforest_size", "n_jobs",
+    ):
         assert forest[key] == models.CAUSAL_FOREST_CONFIG[key], f"config/code mismatch on causal_forest.{key}"
     assert forest["n_estimators"] % forest["subforest_size"] == 0, "econml requires n_estimators % subforest_size == 0"
     assert forest["categorical_top_k"] in preprocessing.CATEGORICAL_ENCODER_K_LADDER
