@@ -64,6 +64,68 @@ def test_uplift_at_k_is_none_when_an_arm_is_missing_in_prefix() -> None:
     assert result.uplift_at_k["10pct"] is None
 
 
+def test_qini_matches_hand_calculation_on_a_tiny_fixture() -> None:
+    """Same 4-row fixture as the AUUC hand-calculation test below, traced
+    through Qini's imbalance-corrected formula instead:
+
+        qini_gain(r) = cum_y1(r) - cum_y0(r) * cum_n1(r)/cum_n0(r), valid
+        only where cum_n0(r) > 0.
+
+    Ranked by score desc: T=1/Y=1, T=0/Y=0, T=1/Y=0, T=0/Y=1.
+      r=1: cum_n0=0                                  -> undefined, dropped
+      r=2: 1 - 0*(1/1) = 1.0                          at coverage 0.50
+      r=3: 1 - 0*(2/1) = 1.0                          at coverage 0.75
+      r=4: 1 - 1*(2/2) = 0.0                          at coverage 1.00
+    Trapezoids from (0,0): 0.5*(0+1.0)*0.50 + 0.5*(1.0+1.0)*0.25
+                         + 0.5*(1.0+0.0)*0.25 = 0.25 + 0.25 + 0.125 = 0.625
+    q_full = 0.0 (the r=4 gain) -> theoretical_random_qini_area = 0.0.
+
+    This is the primary ranking metric (the model comparison is sorted by
+    it) and, unlike AUUC, previously had no hand-traced fixture -- only
+    behavioral tests (beats/loses to random). An off-by-one error in the
+    cum_n1/cum_n0 imbalance-reweighting term would have passed every other
+    existing test.
+    """
+
+    scores = [4.0, 3.0, 2.0, 1.0]
+    treatment = [1, 0, 1, 0]
+    outcome = [1, 0, 0, 1]
+    result = evaluate_ranking(scores, treatment, outcome)
+    assert result.qini_area == pytest.approx(0.625)
+    assert result.theoretical_random_qini_area == pytest.approx(0.0)
+    assert result.qini_above_random == pytest.approx(0.625)
+
+
+def test_evaluate_ranking_rejects_mismatched_lengths() -> None:
+    with pytest.raises(ValueError, match="equal length"):
+        evaluate_ranking([0.1, 0.2, 0.3], [1, 0, 1], [1, 0])
+
+
+def test_evaluate_ranking_rejects_nan_scores() -> None:
+    with pytest.raises(ValueError, match="NaN"):
+        evaluate_ranking([0.1, float("nan"), 0.3], [1, 0, 1], [1, 0, 1])
+
+
+def test_evaluate_ranking_rejects_nan_outcome() -> None:
+    with pytest.raises(ValueError, match="NaN"):
+        evaluate_ranking([0.1, 0.2, 0.3], [1, 0, 1], [1, float("nan"), 1])
+
+
+def test_evaluate_ranking_rejects_non_binary_treatment() -> None:
+    with pytest.raises(ValueError, match="binary"):
+        evaluate_ranking([0.1, 0.2, 0.3], [1, 0, 2], [1, 0, 1])
+
+
+def test_evaluate_ranking_rejects_non_binary_outcome() -> None:
+    with pytest.raises(ValueError, match="binary"):
+        evaluate_ranking([0.1, 0.2, 0.3], [1, 0, 1], [1, 0, 5])
+
+
+def test_compute_ate_rejects_mismatched_lengths() -> None:
+    with pytest.raises(ValueError, match="equal length"):
+        compute_ate([1, 0, 1], [1, 0])
+
+
 def test_auuc_matches_hand_calculation_on_a_tiny_fixture() -> None:
     """4 rows, ranked by score desc: T=1/Y=1, T=0/Y=0, T=1/Y=0, T=0/Y=1.
 

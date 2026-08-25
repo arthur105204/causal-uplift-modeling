@@ -52,7 +52,13 @@ causal_forest:
   n_jobs: 1              # required for bit-identical reproducibility
   # econml has no native categorical support: frequency-capped top-K one-hot
   # + OTHER bucket. K is chosen for resource feasibility, never by performance.
-  categorical_top_k: 32
+  # Default is 8 (the safe end of the resource ladder, ~76 encoded columns):
+  # at full CRITEO scale (~9.8M TRAIN rows), K=32 needs a dense encoded
+  # matrix of ~21GB before CausalForest's own fit-time overhead, which risks
+  # exhausting memory on a standard Kaggle kernel. Raise K only after an
+  # explicit, measured memory/runtime benchmark at the target scale -- this
+  # value is not automatically stepped down at runtime.
+  categorical_top_k: 8
 
 evaluation:
   uplift_at_k: [0.10, 0.20, 0.30, 0.50, 1.00]

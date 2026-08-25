@@ -75,6 +75,60 @@ def test_x_learner_rejects_pre_transformed_frame() -> None:
         fit_x_learner(X, T, Y)
 
 
+def test_x_learner_fold_local_transforms_are_fit_on_disjoint_fold_rows(monkeypatch) -> None:
+    """Regression test for the bug fixed in commit 675f09d ("X-Learner
+    fold-local preprocessing was not actually fold-local"): fit_x_learner
+    must fit a SEPARATE LightGBMFeatureTransform per cross-fitting fold,
+    each on only that fold's own raw rows -- not one transform fit globally
+    and reused across both folds, which lets each fold's categorical
+    vocabulary be informed by the opposite fold's category values.
+
+    Row-level fold-disjointness is the root property that makes categorical
+    vocabulary divergence between folds possible in the first place: if a
+    fold's transform is fit only on that fold's own rows, it can only ever
+    learn categories present in that fold, which is exactly the invariant
+    the fix commit restores. This intercepts every LightGBMFeatureTransform
+    .fit() call fit_x_learner makes and asserts the fold-local calls
+    partition the raw training frame, rather than trusting predict_tau's
+    shape/finiteness alone -- which the previous, broken (globally-fit)
+    implementation would also have passed.
+    """
+
+    raw, T, Y = _synthetic(rows=200, seed=8, true_effect=0.2)
+
+    fit_calls: list[pd.Index] = []
+    original_fit = LightGBMFeatureTransform.fit
+
+    def _recording_fit(self, train_frame):
+        fit_calls.append(pd.Index(train_frame.index))
+        return original_fit(self, train_frame)
+
+    monkeypatch.setattr(LightGBMFeatureTransform, "fit", _recording_fit)
+
+    fit_x_learner(raw, T, Y, seed=8)
+
+    assert len(fit_calls) == 3, (
+        "expected exactly 3 LightGBMFeatureTransform.fit calls: one per "
+        "cross-fitting fold (fold-local nuisance vocab) plus one global "
+        "effect-stage fit -- a different count means the fold-local fix has "
+        f"regressed to a single shared transform (got {len(fit_calls)} calls)"
+    )
+    fold_a_idx, fold_b_idx, effect_idx = fit_calls
+
+    assert len(fold_a_idx.intersection(fold_b_idx)) == 0, (
+        "the two fold-local transforms must be fit on disjoint rows -- any "
+        "overlap means a fold's categorical vocabulary is informed by the "
+        "opposite fold, reintroducing the fold-local preprocessing leak"
+    )
+    assert set(fold_a_idx) | set(fold_b_idx) == set(raw.index), (
+        "the two folds' fit-rows must partition the full raw training frame"
+    )
+    assert set(effect_idx) == set(raw.index), (
+        "the effect-stage transform has no cross-fitting boundary and should "
+        "be fit on the whole raw train partition"
+    )
+
+
 def test_causal_forest_rejects_raw_categorical_columns() -> None:
     raw, T, Y = _synthetic(rows=50, seed=5, true_effect=0.2)
     with pytest.raises(ValueError, match="raw categorical"):
