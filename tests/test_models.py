@@ -139,7 +139,9 @@ def test_causal_forest_fits_on_encoded_features_and_predicts() -> None:
     raw, T, Y = _synthetic(rows=150, seed=6, true_effect=0.3)
     encoder = CausalForestCategoricalEncoder(k=8).fit(raw)
     X_encoded = encoder.transform(raw)
+    assert all(dtype == np.float32 for dtype in X_encoded.dtypes), "CF input must stay float32, not float64"
     model = fit_causal_forest(X_encoded, T, Y)
+    assert model.max_features == "sqrt"
     tau_hat = predict_causal_forest_tau(model, X_encoded)
     assert len(tau_hat) == len(raw)
     assert np.isfinite(tau_hat).all()

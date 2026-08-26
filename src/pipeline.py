@@ -278,10 +278,20 @@ def run_causal_forest_stage(config: dict, outcome_column: str, seed: int, data_s
     del train_frame
     gc.collect()
 
-    start = time.perf_counter()
-    model = fit_causal_forest(X_train_cf, T_train, Y_train, seed=seed)
-    runtime = time.perf_counter() - start
+    # Convert to the ndarray fit_causal_forest actually consumes and release
+    # the DataFrame first -- otherwise both representations of the encoded
+    # train matrix (DataFrame + ndarray) stay resident for the entire
+    # multi-hour, n_jobs=1 fit.
+    X_train_arr = X_train_cf.to_numpy()
+    encoded_matrix_bytes = int(X_train_arr.nbytes)
+    encoded_matrix_dtype = str(X_train_arr.dtype)
     del X_train_cf
+    gc.collect()
+
+    start = time.perf_counter()
+    model = fit_causal_forest(X_train_arr, T_train, Y_train, seed=seed)
+    runtime = time.perf_counter() - start
+    del X_train_arr
     gc.collect()
 
     val_frame = load_parquet(data_dir / "validation.parquet")
@@ -306,8 +316,10 @@ def run_causal_forest_stage(config: dict, outcome_column: str, seed: int, data_s
         "categorical_top_k": cf_config["categorical_top_k"],
         "encoded_feature_count": encoded_feature_count,
         "n_train_rows": n_train_rows,
-        "estimated_encoded_matrix_bytes": n_train_rows * encoded_feature_count * 8,
-        "n_estimators": cf_config["n_estimators"], "honest": cf_config["honest"],
+        "dtype": encoded_matrix_dtype,
+        "estimated_encoded_matrix_bytes": encoded_matrix_bytes,
+        "n_estimators": cf_config["n_estimators"], "max_depth": cf_config["max_depth"],
+        "honest": cf_config["honest"], "max_features": cf_config["max_features"],
         "min_samples_leaf": cf_config["min_samples_leaf"], "max_samples": cf_config["max_samples"],
         "subforest_size": cf_config["subforest_size"], "n_jobs": cf_config["n_jobs"],
         "runtime_seconds": runtime,
