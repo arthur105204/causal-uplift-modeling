@@ -51,6 +51,10 @@ causal_forest:
   max_samples: 0.45
   subforest_size: 4
   n_jobs: 1              # required for bit-identical reproducibility
+  # Standard RF feature subsampling per split, replacing econml's own default
+  # ("auto" == all features every split). Reduces per-node split-search memory
+  # and runtime; not a methodology change.
+  max_features: sqrt
   # econml has no native categorical support: frequency-capped top-K one-hot
   # + OTHER bucket. K is chosen for resource feasibility, never by performance.
   # Default is 8 (the safe end of the resource ladder, ~76 encoded columns):

@@ -98,6 +98,15 @@ def test_cf_encoder_never_produces_a_single_ordinal_column() -> None:
         assert len(expanded) > 1
 
 
+def test_cf_encoder_output_is_float32() -> None:
+    # float32, not float64: CausalForest converts X to float32 internally regardless
+    # (sklearn.tree._tree.DTYPE), so a float64 encoded matrix here is a redundant copy
+    # that stays resident for the entire multi-hour fit.
+    train = pd.DataFrame({feature: [0.0, 1.0, 2.0] * 10 for feature in FEATURE_COLUMNS})
+    output = CausalForestCategoricalEncoder(k=8).fit_transform(train)
+    assert all(dtype == np.float32 for dtype in output.dtypes)
+
+
 # --- train/validation/test split --------------------------------------------
 
 

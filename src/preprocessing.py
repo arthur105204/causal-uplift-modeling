@@ -113,13 +113,20 @@ class CausalForestCategoricalEncoder:
         if not self._fitted:
             raise RuntimeError("transform() called before fit()")
         _require_features(frame)
-        blocks = [frame[[feature]].astype("float64") for feature in CONTINUOUS_FEATURES]
+        # float32 output: CausalForest's own Cython tree builder (sklearn.tree._tree.DTYPE)
+        # converts X to float32 internally regardless of what's passed in, so a float64
+        # encoded matrix here just means a redundant float64 copy sits resident in memory
+        # for the entire multi-hour fit alongside the float32 copy the forest actually
+        # uses. One-hot indicators and these already-bounded continuous features lose no
+        # information relevant to splitting at float32.
+        blocks = [frame[[feature]].astype("float32") for feature in CONTINUOUS_FEATURES]
         for feature in CATEGORICAL_FEATURES:
             vocab = self._vocabularies[feature]
+            # Comparison stays float64 so vocabulary matching isn't affected by dtype choice.
             values = frame[feature].astype("float64")
             in_vocab = values.isin(vocab)
-            block = {_category_column(feature, v): (values == v).astype("float64") for v in vocab}
-            block[_other_column(feature)] = (~in_vocab).astype("float64")
+            block = {_category_column(feature, v): (values == v).astype("float32") for v in vocab}
+            block[_other_column(feature)] = (~in_vocab).astype("float32")
             blocks.append(pd.DataFrame(block, index=frame.index))
         return pd.concat(blocks, axis=1)
 

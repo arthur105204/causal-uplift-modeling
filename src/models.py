@@ -235,6 +235,12 @@ def fit_x_learner(raw_train_frame, T_train, Y_train, *, seed: int = 42) -> XLear
 # this exact config measured tree depth reaching 32 well before that leaf
 # floor forced a stop, so 20 caps the pathological tail without binding on
 # typical splits.
+# max_features="sqrt" replaces econml's own default ("auto" == all features
+# considered at every split): standard random-forest feature subsampling,
+# not a departure from the causal-forest method. It shrinks per-node
+# split-search memory/time roughly 8x here (sqrt(76)~9 vs 76) and, if
+# anything, decorrelates trees more than evaluating every feature at every
+# split.
 # ---------------------------------------------------------------------------
 
 CAUSAL_FOREST_CONFIG: dict[str, object] = {
@@ -246,6 +252,7 @@ CAUSAL_FOREST_CONFIG: dict[str, object] = {
     "max_samples": 0.45,
     "subforest_size": 4,
     "n_jobs": 1,
+    "max_features": "sqrt",
 }
 
 
@@ -262,7 +269,14 @@ def _reject_raw_categorical_columns(X) -> None:
 def fit_causal_forest(X, T, Y, *, seed: int = 42) -> CausalForest:
     _reject_raw_categorical_columns(X)
     config = {**CAUSAL_FOREST_CONFIG, "random_state": seed}
-    X_arr = X.to_numpy() if hasattr(X, "to_numpy") else np.asarray(X, dtype=np.float64)
+    # Preserve the caller's dtype (float32 from CausalForestCategoricalEncoder) instead of
+    # forcing float64 -- econml's CausalForest.fit() converts X to float32 internally anyway
+    # (sklearn.tree._tree.DTYPE), so forcing float64 here just makes it allocate a redundant
+    # float64 copy that stays resident for the entire multi-hour, n_jobs=1 fit.
+    if hasattr(X, "to_numpy"):
+        X_arr = X.to_numpy()
+    else:
+        X_arr = np.asarray(X, dtype=X.dtype if hasattr(X, "dtype") else np.float32)
     T_arr = np.asarray(T, dtype=np.float64).reshape(-1, 1)
     Y_arr = np.asarray(Y, dtype=np.float64)
     model = CausalForest(**config)
