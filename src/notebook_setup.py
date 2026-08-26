@@ -21,13 +21,25 @@ REQUIRED_PACKAGES = (
     "numpy", "pandas", "sklearn", "lightgbm", "econml", "pyarrow", "matplotlib", "yaml", "joblib",
 )
 
+# Import name -> pip package name, for the (rare) packages where they differ.
+# "sklearn" specifically: the bare "sklearn" PyPI package is a deprecated
+# stub that now fails to install outright ("pip install sklearn" errors);
+# the real package is "scikit-learn". Only consulted for the install step --
+# import-checking always uses the import name.
+PIP_PACKAGE_MAP = {
+    "sklearn": "scikit-learn",
+}
+
 
 def check_dependencies(required: tuple[str, ...] = REQUIRED_PACKAGES) -> dict[str, str]:
-    """Import each required package. Returns {name: version} for whatever
-    already imports, and {name: "MISSING"} for whatever doesn't -- missing
-    packages are also installed (best-effort; requires Kaggle internet
-    access), so re-running the notebook cell that calls this after a first
-    "MISSING" report typically resolves it."""
+    """Import each required package, installing and re-verifying whatever is
+    missing. Returns {name: version} -- every value is a real version string,
+    never "MISSING", because this function raises instead of returning a
+    result that claims success while a dependency is still unavailable.
+
+    Raises RuntimeError if the install subprocess fails (e.g. no internet on
+    a fresh Kaggle kernel) or if a package still fails to import afterward.
+    """
 
     results: dict[str, str] = {}
     missing = []
@@ -36,10 +48,33 @@ def check_dependencies(required: tuple[str, ...] = REQUIRED_PACKAGES) -> dict[st
             module = importlib.import_module(name)
             results[name] = str(getattr(module, "__version__", "n/a"))
         except ImportError:
-            results[name] = "MISSING"
             missing.append(name)
+
     if missing:
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", *missing], check=False)
+        pip_names = [PIP_PACKAGE_MAP.get(name, name) for name in missing]
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-q", *pip_names],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "Dependency installation failed. Check Kaggle internet settings or "
+                f"package availability.\nAttempted: {pip_names}\n{result.stderr.strip()}"
+            )
+
+        still_missing = []
+        for name in missing:
+            try:
+                module = importlib.import_module(name)
+                results[name] = str(getattr(module, "__version__", "n/a"))
+            except ImportError:
+                still_missing.append(name)
+        if still_missing:
+            raise RuntimeError(
+                "Dependency installation failed. Check Kaggle internet settings or "
+                f"package availability. Still missing after install: {still_missing}"
+            )
+
     return results
 
 
