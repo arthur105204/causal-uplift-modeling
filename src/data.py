@@ -30,6 +30,31 @@ PRIMARY_OUTCOME = "conversion"
 SECONDARY_OUTCOME = "visit"
 AUDIT_ONLY_COLUMN = "exposure"  # post-assignment; never enters X
 
+# The two outcome columns a pipeline run may target: conversion (primary,
+# business-oriented) or visit (secondary, sensitivity/robustness analysis --
+# see docs/secondary_visit_outcome_experiment_plan.md). Not a mutable
+# selection -- callers resolve which one they want via resolve_outcome() and
+# thread the result through explicitly; nothing here is reassigned at runtime.
+SUPPORTED_OUTCOMES = (PRIMARY_OUTCOME, SECONDARY_OUTCOME)
+
+
+def resolve_outcome(outcome: str | None = None) -> str:
+    """Resolve the outcome column name for a pipeline run.
+
+    `outcome=None` (the default) preserves existing behavior: the primary
+    business outcome, conversion. Passing "visit" selects the secondary
+    sensitivity outcome. Any other value is rejected -- this is the single
+    validated choke point every stage should call instead of hardcoding a
+    column name, so an invalid outcome fails immediately rather than
+    surfacing as a confusing downstream KeyError.
+    """
+
+    selected = PRIMARY_OUTCOME if outcome is None else outcome
+    if selected not in SUPPORTED_OUTCOMES:
+        raise ValueError(f"outcome must be one of {SUPPORTED_OUTCOMES}, got {selected!r}")
+    return selected
+
+
 EXPECTED_COLUMNS = FEATURE_COLUMNS + (
     TREATMENT_COLUMN,
     PRIMARY_OUTCOME,

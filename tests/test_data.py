@@ -9,11 +9,57 @@ from src.data import (
     CSV_FILENAME,
     EXPECTED_COLUMNS,
     FEATURE_COLUMNS,
+    PRIMARY_OUTCOME,
+    SECONDARY_OUTCOME,
+    SUPPORTED_OUTCOMES,
+    TREATMENT_COLUMN,
     load_csv,
     load_parquet,
     resolve_csv_path,
+    resolve_outcome,
     save_parquet,
 )
+
+
+def test_resolve_outcome_defaults_to_conversion_unchanged() -> None:
+    """No argument (and explicitly passing None) must preserve the existing
+    conversion-only behavior this pipeline had before outcome became
+    configurable."""
+
+    assert resolve_outcome() == PRIMARY_OUTCOME
+    assert resolve_outcome(None) == PRIMARY_OUTCOME
+
+
+def test_resolve_outcome_accepts_conversion_explicitly() -> None:
+    assert resolve_outcome("conversion") == PRIMARY_OUTCOME
+
+
+def test_resolve_outcome_selects_visit() -> None:
+    assert resolve_outcome("visit") == SECONDARY_OUTCOME
+
+
+def test_resolve_outcome_rejects_unsupported_values() -> None:
+    for bogus in ("exposure", "click", "conversion ", "Conversion", ""):
+        with pytest.raises(ValueError):
+            resolve_outcome(bogus)
+
+
+def test_supported_outcomes_is_exactly_conversion_and_visit() -> None:
+    assert SUPPORTED_OUTCOMES == (PRIMARY_OUTCOME, SECONDARY_OUTCOME)
+
+
+def test_outcome_selection_leaves_features_and_treatment_untouched() -> None:
+    """Selecting a different outcome must be orthogonal to which columns are
+    features (f0..f11) or the treatment column -- resolve_outcome only names
+    the Y column, never touches X or T."""
+
+    before_features, before_treatment = FEATURE_COLUMNS, TREATMENT_COLUMN
+    resolve_outcome("visit")
+    assert FEATURE_COLUMNS == before_features
+    assert TREATMENT_COLUMN == before_treatment
+    assert TREATMENT_COLUMN not in FEATURE_COLUMNS
+    assert SECONDARY_OUTCOME not in FEATURE_COLUMNS
+    assert PRIMARY_OUTCOME not in FEATURE_COLUMNS
 
 
 def _touch(path: Path) -> Path:

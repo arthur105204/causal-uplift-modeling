@@ -22,7 +22,7 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
-from src.data import on_kaggle, repo_root
+from src.data import PRIMARY_OUTCOME, on_kaggle, repo_root, resolve_outcome
 
 STAGES = ("data", "preprocessing", "baseline", "uplift", "causal_forest", "report")
 
@@ -61,6 +61,28 @@ def config_fingerprint(*parts: object) -> str:
 
     payload = json.dumps(parts, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()[:16]
+
+
+def experiment_metadata(outcome: str | None, *, seed: int, data_signature: str) -> dict:
+    """Standard experiment-identifying fields every stage's metadata JSON
+    should carry, so a conversion artifact and a visit artifact are never
+    ambiguous about which experiment produced them.
+
+    `outcome=None` resolves to the default (conversion), matching
+    src.data.resolve_outcome. `experiment_name` encodes both the outcome and
+    its role ("<outcome>_primary" for conversion, "<outcome>_sensitivity"
+    for every other supported outcome) so it reads unambiguously on its own,
+    without needing the plan document open to interpret it.
+    """
+
+    resolved = resolve_outcome(outcome)
+    role = "primary" if resolved == PRIMARY_OUTCOME else "sensitivity"
+    return {
+        "outcome_column": resolved,
+        "experiment_name": f"{resolved}_{role}",
+        "seed": seed,
+        "data_signature": data_signature,
+    }
 
 
 def save_json(obj: dict, path: Path) -> None:

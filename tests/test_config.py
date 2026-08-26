@@ -11,9 +11,15 @@ import src.evaluation as evaluation
 import src.models as models
 import src.preprocessing as preprocessing
 from src.data import CATEGORICAL_FEATURES, CONTINUOUS_FEATURES, CSV_FILENAME, PRIMARY_OUTCOME
-from src.data import SECONDARY_OUTCOME, TREATMENT_COLUMN, load_config
+from src.data import SECONDARY_OUTCOME, SUPPORTED_OUTCOMES, TREATMENT_COLUMN, load_config, resolve_outcome
 
 CONFIG = load_config()
+
+
+def test_experiment_section_defaults_to_primary_outcome() -> None:
+    assert CONFIG["experiment"]["outcome"] == PRIMARY_OUTCOME
+    assert CONFIG["experiment"]["outcome"] == resolve_outcome()
+    assert CONFIG["experiment"]["outcome"] in SUPPORTED_OUTCOMES
 
 
 def test_data_section_matches_code() -> None:

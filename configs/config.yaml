@@ -10,6 +10,16 @@
 
 seed: 42
 
+experiment:
+  # Which outcome column a pipeline run targets as Y. "conversion" is the
+  # primary, business-oriented experiment; "visit" is a secondary
+  # sensitivity/robustness analysis (see
+  # docs/secondary_visit_outcome_experiment_plan.md). Supported: conversion,
+  # visit. Resolved and validated by src.data.resolve_outcome -- this key is
+  # not consumed directly, so an invalid value here is only caught wherever a
+  # caller passes it through resolve_outcome, not by loading this file alone.
+  outcome: conversion
+
 data:
   csv_filename: criteo-uplift-v2.1.csv
   treatment_column: treatment
