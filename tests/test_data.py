@@ -62,6 +62,51 @@ def test_outcome_selection_leaves_features_and_treatment_untouched() -> None:
     assert PRIMARY_OUTCOME not in FEATURE_COLUMNS
 
 
+def _synthetic_frame(rows: int = 20) -> pd.DataFrame:
+    """A frame shaped like the notebook's post-split partitions: features,
+    treatment, row_id, and BOTH outcome columns present at once -- exactly
+    what train/validation/test.parquet actually contain (see
+    docs/secondary_visit_outcome_experiment_plan.md Phase 1 audit finding:
+    both outcomes are already persisted together)."""
+
+    data = {f: list(range(rows)) for f in FEATURE_COLUMNS}
+    data[TREATMENT_COLUMN] = [i % 2 for i in range(rows)]
+    data[PRIMARY_OUTCOME] = [(i // 3) % 2 for i in range(rows)]  # deliberately different pattern
+    data[SECONDARY_OUTCOME] = [(i // 5) % 2 for i in range(rows)]  # from PRIMARY_OUTCOME's
+    data["row_id"] = list(range(rows))
+    return pd.DataFrame(data)
+
+
+def test_selecting_visit_changes_only_which_column_is_y() -> None:
+    """This is what every model-stage cell in kaggle_execution.ipynb now
+    does: Y = frame[OUTCOME_COLUMN]. Switching OUTCOME_COLUMN must select a
+    different column's values -- not silently return the same data."""
+
+    frame = _synthetic_frame()
+    y_conversion = frame[resolve_outcome("conversion")]
+    y_visit = frame[resolve_outcome("visit")]
+    assert not y_conversion.equals(y_visit), "fixture's conversion/visit columns must actually differ"
+    assert y_conversion.equals(frame[PRIMARY_OUTCOME])
+    assert y_visit.equals(frame[SECONDARY_OUTCOME])
+
+
+def test_selecting_visit_leaves_features_treatment_and_row_ids_byte_identical() -> None:
+    """Reading a different Y off the same frame must never perturb X, T, or
+    row_id -- this is the guarantee that lets the visit sensitivity
+    experiment reuse conversion's exact physical row partition."""
+
+    frame = _synthetic_frame()
+    features_before = frame[list(FEATURE_COLUMNS)].copy()
+    treatment_before = frame[TREATMENT_COLUMN].copy()
+    row_id_before = frame["row_id"].copy()
+
+    for outcome in ("conversion", "visit"):
+        _ = frame[resolve_outcome(outcome)]  # the only thing a model stage reads differently
+        pd.testing.assert_frame_equal(frame[list(FEATURE_COLUMNS)], features_before)
+        pd.testing.assert_series_equal(frame[TREATMENT_COLUMN], treatment_before)
+        pd.testing.assert_series_equal(frame["row_id"], row_id_before)
+
+
 def _touch(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("", encoding="utf-8")

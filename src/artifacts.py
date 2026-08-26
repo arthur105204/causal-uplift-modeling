@@ -24,7 +24,17 @@ import pandas as pd
 
 from src.data import PRIMARY_OUTCOME, on_kaggle, repo_root, resolve_outcome
 
-STAGES = ("data", "preprocessing", "baseline", "uplift", "causal_forest", "report")
+# data/preprocessing are shared across every outcome -- the row partition and
+# the feature transforms never depend on which outcome (Y) is being modeled
+# (see docs/secondary_visit_outcome_experiment_plan.md Phase 1/5 audit), so
+# they live at one location and are computed once, reused by every outcome.
+SHARED_STAGES = ("data", "preprocessing")
+# baseline/uplift/causal_forest/report DO depend on which outcome was
+# selected (the fitted model, its predictions, its metrics) -- each lives
+# under its own outcome subdirectory so a conversion run and a visit run can
+# never collide or be mistaken for one another on disk.
+OUTCOME_SCOPED_STAGES = ("baseline", "uplift", "causal_forest", "report")
+STAGES = SHARED_STAGES + OUTCOME_SCOPED_STAGES
 
 
 def artifact_root() -> Path:
@@ -42,10 +52,24 @@ def artifact_root() -> Path:
     return root
 
 
-def stage_dir(stage: str) -> Path:
+def stage_dir(stage: str, *, outcome: str | None = None) -> Path:
+    """Directory for one stage's artifacts.
+
+    `outcome` is only consulted for OUTCOME_SCOPED_STAGES, where it selects
+    which outcome's subdirectory to use (default: resolve_outcome's default,
+    conversion) -- e.g. outputs/conversion/baseline/ vs
+    outputs/visit/baseline/. SHARED_STAGES ignore it entirely: they resolve
+    to the same outputs/data/ or outputs/preprocessing/ regardless of
+    outcome, by design (see SHARED_STAGES above).
+    """
+
     if stage not in STAGES:
         raise ValueError(f"unknown stage {stage!r}, expected one of {STAGES}")
-    path = artifact_root() / stage
+    root = artifact_root()
+    if stage in OUTCOME_SCOPED_STAGES:
+        path = root / resolve_outcome(outcome) / stage
+    else:
+        path = root / stage
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -92,6 +116,33 @@ def save_json(obj: dict, path: Path) -> None:
 
 def load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def artifact_is_fresh(meta_path: Path, expected_signature: str, *, outcome: str | None = None) -> bool:
+    """True if a stage's cached metadata is safe to reuse: the file exists,
+    parses, and its data_signature matches. When `outcome` is given, the
+    cached metadata's own outcome_column must also match the resolved
+    outcome -- this is what stops a visit run from ever treating a
+    conversion-trained artifact (or vice versa) as fresh, even though both
+    can share the same data_signature (see SHARED_STAGES: the underlying row
+    partition really is identical, only the outcome differs).
+
+    `outcome=None` (used for SHARED_STAGES, whose metadata never carries an
+    outcome_column at all) skips the outcome check entirely -- unchanged
+    behavior from before outcome became configurable.
+    """
+
+    if not meta_path.is_file():
+        return False
+    try:
+        meta = load_json(meta_path)
+    except Exception:
+        return False
+    if meta.get("data_signature") != expected_signature:
+        return False
+    if outcome is not None and meta.get("outcome_column") != resolve_outcome(outcome):
+        return False
+    return True
 
 
 def save_pickle(obj: object, path: Path) -> None:
