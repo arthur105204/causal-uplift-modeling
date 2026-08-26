@@ -234,7 +234,12 @@ def fit_x_learner(raw_train_frame, T_train, Y_train, *, seed: int = 42) -> XLear
 # already limits how deep a well-behaved split needs to go; a benchmark under
 # this exact config measured tree depth reaching 32 well before that leaf
 # floor forced a stop, so 20 caps the pathological tail without binding on
-# typical splits.
+# typical splits. The pathological tail is not hypothetical: this dataset has
+# a documented population of exact repeated-feature-value rows (see
+# archive/docs/04_duplicate_profile_protocol.md) -- large groups of rows a
+# split cannot separate on X alone recurse far deeper than a clean, unique-
+# valued sample would, which is the actual mechanism max_depth guards
+# against, not a generic "more data needs a shallower tree" heuristic.
 # max_features="sqrt" replaces econml's own default ("auto" == all features
 # considered at every split): standard random-forest feature subsampling,
 # not a departure from the causal-forest method. It shrinks per-node

@@ -57,12 +57,29 @@ causal_forest:
   max_features: sqrt
   # econml has no native categorical support: frequency-capped top-K one-hot
   # + OTHER bucket. K is chosen for resource feasibility, never by performance.
-  # Default is 8 (the safe end of the resource ladder, ~76 encoded columns):
-  # at full CRITEO scale (~9.8M TRAIN rows), K=32 needs a dense encoded
-  # matrix of ~21GB before CausalForest's own fit-time overhead, which risks
-  # exhausting memory on a standard Kaggle kernel. Raise K only after an
-  # explicit, measured memory/runtime benchmark at the target scale -- this
-  # value is not automatically stepped down at runtime.
+  # Encoded width is deterministic regardless of true category cardinality:
+  # 4 continuous + 8 categorical * (K+1) one-hot columns. At full CRITEO
+  # scale (~9.8M TRAIN rows) and the encoder's float32 output (see
+  # CausalForestCategoricalEncoder.transform):
+  #   K=8  ->  76 cols, ~2.8 GB dense train matrix   (current default)
+  #   K=16 -> 140 cols, ~5.1 GB
+  #   K=20 -> 172 cols, ~6.3 GB
+  #   K=32 -> 268 cols, ~9.8 GB   (was ~21GB under the old float64 encoding,
+  #                                pre-dating the float32 fix -- that number
+  #                                is now stale; see git history)
+  #   K=50 -> 408 cols, ~14.9 GB
+  # K=100 (812 cols, ~29.5 GB) is excluded from CATEGORICAL_ENCODER_K_LADDER
+  # entirely: the encoded matrix alone would consume essentially all of a
+  # 30GB Kaggle kernel before CausalForest's own fit-time overhead (tree
+  # structure, honest-split index bookkeeping) is even accounted for.
+  # Default stays 8 -- the safe end of the ladder -- because the OOM this
+  # config exists to prevent was traced primarily to unbounded tree depth on
+  # this dataset's documented repeated-feature-value rows (see
+  # archive/docs/04_duplicate_profile_protocol.md), not to encoding width;
+  # raising K changes a variable that was not the diagnosed cause. Raise K
+  # only after an explicit, measured memory/runtime benchmark at the target
+  # scale (see notebooks/kaggle_execution.ipynb Section 4.4's psutil
+  # checkpoints) -- this value is not automatically stepped down at runtime.
   categorical_top_k: 8
 
 evaluation:

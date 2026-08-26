@@ -85,7 +85,7 @@ def test_cf_encoder_routes_unseen_category_to_other() -> None:
 
 
 def test_cf_encoder_rejects_invalid_k() -> None:
-    with pytest.raises(ValueError, match="32, 16, 8"):
+    with pytest.raises(ValueError, match="50, 32, 20, 16, 8"):
         CausalForestCategoricalEncoder(k=4)
 
 

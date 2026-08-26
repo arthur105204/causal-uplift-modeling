@@ -73,7 +73,7 @@ class LightGBMFeatureTransform:
         return self.fit(train_frame).transform(train_frame)
 
 
-CATEGORICAL_ENCODER_K_LADDER = (32, 16, 8)
+CATEGORICAL_ENCODER_K_LADDER = (50, 32, 20, 16, 8)
 
 
 def _category_column(feature: str, value: float) -> str:
