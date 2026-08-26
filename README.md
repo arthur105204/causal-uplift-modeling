@@ -181,10 +181,11 @@ The shipped default (`configs/config.yaml: causal_forest.categorical_top_k`)
 is **`K=8`** — the conservative end of the ladder, `8*(8+1)+4 = 76` encoded
 columns. This is a memory/fidelity tradeoff, not a free parameter: at `K=32`
 the encoded matrix is 268 columns, which at full CRITEO scale (~9.8M TRAIN
-rows) is a ~21GB dense `float64` matrix *before* `CausalForest.fit()`'s own
-honest-splitting and bootstrap overhead — a real OOM risk on a standard
-Kaggle kernel. `K=8` keeps every categorical feature resolved down to its 8
-most frequent levels (plus `OTHER`), which is coarser than LightGBM's native
+rows) is a ~9.8GB dense `float32` matrix (`CausalForestCategoricalEncoder`
+outputs `float32`, not `float64` — see `src/preprocessing.py`) *before*
+`CausalForest.fit()`'s own honest-splitting and bootstrap overhead. `K=8`
+keeps every categorical feature resolved down to its 8 most frequent levels
+(plus `OTHER`), which is coarser than LightGBM's native
 full-cardinality categorical splits used by the T-/X-Learner — so Causal
 Forest sees a lower-resolution categorical representation than the other
 estimators, a real cross-model comparability caveat worth keeping in mind
