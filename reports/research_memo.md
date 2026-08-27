@@ -79,6 +79,8 @@ Both outcomes are evaluated on the identical seeded 70/15/15
 train/validation/test partition of CRITEO-UPLIFTv2.1 (`n_test = 2,096,939`);
 only which column is read as `Y` differs.
 
+**Table 1 — Outcome definitions and test-partition prevalence**
+
 | Outcome | Definition | Prevalence (test) | Treatment rate |
 |---|---|---|---|
 | `conversion` (primary) | User completes a purchase following ad exposure | 0.2917% | 85% |
@@ -98,6 +100,8 @@ conclusions are limited by label sparsity, addressed directly in §5–§6.
 *Evidence source: `comparative_analysis_report.ipynb` §2, `outcome_table`; reproduced in `reports/tables/table1_outcome_definitions.csv`.*
 
 ## 3. Experimental Design
+
+**Table 2 — Estimator objectives**
 
 | Estimator | Estimates | Role |
 |---|---|---|
@@ -130,6 +134,8 @@ significance check.
 
 ### 4.1 Conversion Outcome
 
+**Table 3 — Model comparison, conversion outcome (test partition)**
+
 | Model | Objective | Qini above random | AUUC above random | uplift@10% |
 |---|---|---|---|---|
 | Response LightGBM | `P(Y\|X)` | 806.24 | 942.03 | 0.00832 |
@@ -151,9 +157,11 @@ top row.
 ![Qini curves by model, conversion vs. visit](figures/fig3_qini_curves.png)
 *Figures 2–3 show both outcomes together; see `reports/figures/figure_list.md`.*
 
-*Evidence source: `outputs/conversion/{baseline,causal_forest,uplift/xlearner,uplift/tlearner}/metrics.json`; `comparative_analysis_report.ipynb` Table 1. Reproduced in `reports/tables/table3_conversion_comparison.csv`.*
+*Evidence source: `outputs/conversion/{baseline,causal_forest,uplift/xlearner,uplift/tlearner}/metrics.json`, via `comparative_analysis_report.ipynb`'s own model-comparison table for this outcome. Reproduced above as this memo's Table 3, and in full (all metrics) in `reports/tables/table3_conversion_comparison.csv`.*
 
 ### 4.2 Visit Robustness Check
+
+**Table 4 — Model comparison, visit outcome (test partition)**
 
 | Model | Objective | Qini above random | AUUC above random | uplift@10% |
 |---|---|---|---|---|
@@ -171,7 +179,7 @@ the outcome the business optimizes for.
 
 *(Figures 2–3 above already show the visit panel alongside conversion.)*
 
-*Evidence source: `outputs/visit/{baseline,causal_forest,uplift/xlearner,uplift/tlearner}/metrics.json`; `comparative_analysis_report.ipynb` Table 2. Reproduced in `reports/tables/table4_visit_comparison.csv`.*
+*Evidence source: `outputs/visit/{baseline,causal_forest,uplift/xlearner,uplift/tlearner}/metrics.json`, via `comparative_analysis_report.ipynb`'s own model-comparison table for this outcome. Reproduced above as this memo's Table 4, and in full (all metrics) in `reports/tables/table4_visit_comparison.csv`.*
 
 ## 5. Statistical Evidence
 
@@ -181,6 +189,8 @@ models are statistically indistinguishable. We use a paired bootstrap
 applied to both models on each draw) to compute a 95% CI on the
 **Response LightGBM minus Causal Forest** gap, per outcome, for the three
 metrics shown above.
+
+**Table 5 — Paired bootstrap 95% CI, Response LightGBM minus Causal Forest**
 
 | Outcome | Metric | 95% CI (Response − Causal Forest) | Conclusion |
 |---|---|---|---|
