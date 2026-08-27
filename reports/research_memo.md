@@ -201,12 +201,9 @@ should be read as **consistent with one another**, not as three
 independent confirmations — no correction for multiple comparisons was
 applied, and none was needed to reach that more modest reading.
 
-**Figure 4 — Forest plot (Response − Causal Forest, both outcomes) — pending.**
-*This figure could not be included in this package: the source cell in
-`comparative_analysis_report.ipynb` (§5, cell `74ab5e45`) had not yet been
-executed in the committed notebook as of this package's assembly (a full
-re-execution was in progress at `BOOTSTRAP_MODE="final"`, estimated ~3
-hours on this machine — see `reports/figures/figure_list.md` for status).*
+**Figure 4 — Forest plot: is the Response-vs-Causal-Forest gap distinguishable from zero?**
+![Forest plot of the six bootstrap CIs](figures/fig4_bootstrap_forest.png)
+*Source: `comparative_analysis_report.ipynb` §5, cell `74ab5e45`, `execution_count=15`. See `reports/figures/figure_list.md` for how this was produced and verified.*
 
 *Evidence source: `comparative_analysis_report.ipynb` §5, `BOOTSTRAP_TABLE`; `src.reporting.paired_bootstrap_gaps`. Reproduced in `reports/tables/table5_bootstrap_ci.csv`.*
 

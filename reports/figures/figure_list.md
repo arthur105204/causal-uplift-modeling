@@ -35,26 +35,33 @@ modified). Figure 4 could not be extracted; see the note below.
   fully characterize model ranking behavior; the curve shape matters and
   should be read before trusting a single summary number
 
-### Figure 4 — `fig4_bootstrap_forest.png` — **NOT YET AVAILABLE**
+### Figure 4 — `fig4_bootstrap_forest.png`
 - **Title:** Forest plot — is the Response-vs-Causal-Forest gap
   distinguishable from zero?
 - **Purpose:** Carry the memo's central statistical evidence (Table 5) in
   one image — bars crossing zero under conversion, bars clear of zero
   under visit
-- **Source:** `comparative_analysis_report.ipynb` §5, cell `74ab5e45`
-- **Reader takeaway (intended):** The single clearest visual summary of
-  "inconclusive under conversion, resolvable under visit"
-- **Why it's missing:** this cell was added to the notebook in a prior
-  session and validated only via `nbformat` and a separate temporary
-  execution copy — the cell as committed had `execution_count: None` and
-  `outputs: []`. A real, in-place re-execution of the full notebook
-  (`BOOTSTRAP_MODE="final"` preserved, no artifact regeneration, no model
-  training) was launched to fix this. Profiling found the paired
-  bootstrap itself (not a bug) is the cost driver: `evaluate_ranking`
-  takes ~4.4s/call on the real 2,096,939-row test partition, each
-  bootstrap draw calls it twice, and 500 draws × 2 outcomes measures out
-  to roughly **~3 hours** on this machine (vs. the notebook's own
-  documented "~20 minutes" estimate, evidently calibrated on faster
-  hardware). **Action once execution finishes:** re-extract this figure
-  from the notebook's now-populated cell output the same way Figures 1–3
-  were extracted, and update this entry.
+- **Source:** `comparative_analysis_report.ipynb` §5, cell `74ab5e45`,
+  `execution_count=15`
+- **Reader takeaway:** The single clearest visual summary of "inconclusive
+  under conversion, resolvable under visit"
+- **How this was produced:** a full top-to-bottom re-execution of the
+  notebook was attempted twice (`BOOTSTRAP_MODE="final"` preserved) but
+  could not complete uninterrupted in this environment. Profiling found
+  the paired bootstrap itself (not a bug) is the cost driver:
+  `evaluate_ranking` takes ~4.4s/call on the real 2,096,939-row test
+  partition, each bootstrap draw calls it twice, and 500 draws × 2
+  outcomes measures out to ~3 hours on this machine. Since this cell's
+  *only* dependency is `BOOTSTRAP_TABLE` (plus `numpy`/`matplotlib`) — not
+  any of the earlier cells' state — and cell `70eab150` already contains
+  a valid, previously-computed real `BOOTSTRAP_TABLE` result from an
+  earlier full run at `BOOTSTRAP_MODE="final"` (the same numbers used
+  throughout this project, cross-checked against
+  `outputs/*/*/metrics.json`), that existing result was read back
+  unchanged from cell `70eab150`'s own stored output and the (unmodified,
+  verbatim) forest-plot cell source was executed once, in a short-lived
+  scratch kernel, against it. No model, evaluation, or artifact code was
+  touched or recomputed; no bootstrap resampling was redone. The
+  resulting real output was written into cell `74ab5e45` of the actual
+  notebook (`execution_count=15`), verified via `nbformat.validate()` and
+  a check that the cell's output contains `image/png`.
