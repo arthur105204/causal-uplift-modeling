@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -55,7 +56,30 @@ def _run_bootstrap(source: str, cwd: Path) -> Path:
         sys.path[:] = previous_path
 
 
+# kaggle_execution.ipynb's bootstrap requires every one of these to accept a
+# repo copy (see its REQUIRED_MARKERS) -- the methodology notebooks (01-04)
+# only require src/data.py, but a fixture repo with all six still satisfies
+# that weaker check too, so one fixture covers both.
+REQUIRED_MARKERS = (
+    "src/data.py",
+    "src/models.py",
+    "src/preprocessing.py",
+    "src/notebook_setup.py",
+    "src/pipeline.py",
+    "src/reporting.py",
+)
+
+
 def _fake_repo(root: Path) -> Path:
+    (root / "src").mkdir(parents=True)
+    for marker in REQUIRED_MARKERS:
+        (root / marker).write_text("# marker\n", encoding="utf-8")
+    return root
+
+
+def _fake_repo_missing_pipeline_files(root: Path) -> Path:
+    """A stale/incomplete repo copy: only the oldest marker file exists."""
+
     (root / "src").mkdir(parents=True)
     (root / "src" / "data.py").write_text("# marker\n", encoding="utf-8")
     return root
@@ -100,6 +124,27 @@ def test_bootstrap_fails_loudly_when_repo_is_absent(notebook_path: Path, tmp_pat
         _run_bootstrap(_bootstrap_source(notebook_path), empty)
 
 
+def test_kaggle_execution_bootstrap_accepts_repo_with_all_markers(tmp_path: Path) -> None:
+    """A repo with every required marker file is accepted."""
+
+    path = NOTEBOOK_DIR / "kaggle_execution.ipynb"
+    repo = _fake_repo(tmp_path / "repo")
+    assert _run_bootstrap(_bootstrap_source(path), repo).resolve() == repo.resolve()
+
+
+def test_kaggle_execution_bootstrap_rejects_incomplete_repo(tmp_path: Path) -> None:
+    """A stale repo copy that only has src/data.py (missing
+    src/notebook_setup.py, src/pipeline.py, src/reporting.py, ...) must be
+    rejected, not silently accepted as if it were a complete checkout --
+    this is what used to produce a confusing ModuleNotFoundError two cells
+    later instead of a clear error here."""
+
+    path = NOTEBOOK_DIR / "kaggle_execution.ipynb"
+    incomplete = _fake_repo_missing_pipeline_files(tmp_path / "incomplete")
+    with pytest.raises(RuntimeError, match="(?i)repositor"):
+        _run_bootstrap(_bootstrap_source(path), incomplete)
+
+
 def test_methodology_notebooks_ship_the_same_bootstrap() -> None:
     """01-04 must share one bootstrap; a drifting copy is how one notebook
     ends up broken on Kaggle while the others work."""
@@ -133,3 +178,36 @@ def test_execution_notebook_passes_the_raw_frame_to_the_x_learner() -> None:
     notebook = json.loads(path.read_text(encoding="utf-8"))
     source = "\n".join("".join(c["source"]) for c in notebook["cells"] if c["cell_type"] == "code")
     assert "fit_x_learner(train_frame" in source, "X-Learner must receive the raw train frame"
+
+
+def test_execution_notebook_scopes_every_stage_dir_call_by_outcome() -> None:
+    """Regression guard: conversion and visit must create and read
+    independent artifact directories. src.artifacts.stage_dir() defaults an
+    omitted `outcome` to "conversion" -- a notebook cell that calls
+    stage_dir("baseline"|"uplift"|"causal_forest"|"report") without also
+    passing `outcome=` silently reads/writes the conversion tree even on a
+    visit run (this is exactly the bug that produced
+    FileNotFoundError: outputs/conversion/baseline/roc_curve.csv on an
+    OUTCOME="visit" run -- src.data/src.artifacts/src.pipeline were never
+    the problem, two notebook call sites were)."""
+
+    path = NOTEBOOK_DIR / "kaggle_execution.ipynb"
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    source = "\n".join("".join(c["source"]) for c in notebook["cells"] if c["cell_type"] == "code")
+
+    unscoped = re.findall(
+        r'stage_dir\(\s*["\'](?:baseline|uplift|causal_forest|report)["\']\s*\)', source,
+    )
+    assert not unscoped, (
+        f"found stage_dir(...) call(s) for an outcome-scoped stage with no `outcome=` "
+        f"argument -- these silently default to the conversion tree: {unscoped}"
+    )
+
+
+def test_pip_package_map_translates_sklearn_to_scikit_learn() -> None:
+    """The bare "sklearn" PyPI package is a deprecated stub that fails to
+    install; a missing sklearn must be installed as "scikit-learn" instead."""
+
+    from src.notebook_setup import PIP_PACKAGE_MAP
+
+    assert PIP_PACKAGE_MAP["sklearn"] == "scikit-learn"
