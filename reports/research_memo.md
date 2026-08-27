@@ -4,23 +4,39 @@
 `notebooks/experiments/conversion_experiment.ipynb`, `notebooks/experiments/visit_experiment.ipynb`,
 `README.md`, and `outputs/{conversion,visit}/*/metrics.json`. Every number below is
 read directly from those artifacts. Prose identical to `docs/research_memo_draft.md`
-as of this package's assembly — see `docs/pdf_preflight_review.md` for the editorial
-audit performed on this text and its recommendations, none of which have been
-applied yet.*
+as of this package's assembly (Phase 4.1: Executive Summary and Conclusion revised
+for a plain-language-first readability pass; findings, numbers, and conclusions
+unchanged from the Phase 3 draft) — see `docs/pdf_preflight_review.md` for the
+editorial audit that prompted the readability revision.*
 
 ## Executive Summary
 
-We compare four estimators — a non-causal response model (Response LightGBM,
-`P(Y|X)`) and three causal uplift estimators (T-Learner, X-Learner, Causal
-Forest, all estimating `tau(X)`) — on their ability to rank users by
-incremental treatment effect on **conversion**, the primary business
-outcome, using CRITEO-UPLIFTv2.1. Conversion is rare (0.29% prevalence), and
-under it, Response LightGBM's point-estimate ranking edges out all three
-causal estimators, but a paired bootstrap shows this gap is **not
-statistically distinguishable from resampling noise** on any of the three
-metrics checked (Qini above random, AUUC above random, uplift@10%). This
-result is genuinely inconclusive, not evidence that the causal estimators
-fail to add value.
+**The business problem.** An advertiser wants to know which users an ad
+actually *changes the mind of* — not just which users are likely to buy
+anyway. Ad budget spent on someone who would have converted regardless is
+wasted; the useful targeting signal is the *incremental* effect of showing
+the ad, not the raw likelihood of the outcome on its own.
+
+**Two ways to target.** A simple approach ranks users by how likely they
+are to convert, without regard to whether they were shown an ad — a
+*response model* (here, Response LightGBM; formally, this predicts
+`P(Y|X)`, the outcome probability given the user's features). A more
+sophisticated approach instead tries to estimate each user's actual
+incremental response to the ad — an *uplift*, or *causal*, model (here,
+T-Learner, X-Learner, and Causal Forest; formally, these estimate the
+conditional average treatment effect `tau(X)`). This memo asks whether the
+added complexity of the causal approach measurably outranks the simpler
+response model, using CRITEO-UPLIFTv2.1.
+
+**What we found.** We compare all four estimators on their ability to rank
+users by incremental treatment effect on **conversion**, the primary
+business outcome. Conversion is rare (0.29% prevalence), and under it,
+Response LightGBM's point-estimate ranking edges out all three causal
+estimators, but a paired bootstrap shows this gap is **not statistically
+distinguishable from resampling noise** on any of the three metrics checked
+(Qini above random, AUUC above random, uplift@10%). This result is
+genuinely inconclusive, not evidence that the causal estimators fail to add
+value.
 
 As a robustness check, we repeat the identical comparison on **visit**, a
 much denser behavioral outcome (4.66% prevalence, ~16x conversion's rate) on
@@ -30,9 +46,17 @@ three metrics. Read together, the two results suggest that the ambiguity
 under conversion is consistent with an outcome-sparsity limit on this
 comparison's statistical power, rather than evidence that no ranking
 difference exists between the response baseline and the causal estimators.
-This is not a claim that Causal Forest is the better model in general, that
-visit substitutes for conversion as the business objective, or that the
-bootstrap check establishes a causal mechanism — see Limitations.
+
+**What this means in practice.** On conversion, the outcome that matters
+for the business, this analysis does not give statistical grounds to
+prefer either the response baseline or the causal estimators — the honest
+position today is that the two approaches are not distinguishable in
+expected ranking performance on this outcome, not that one has been shown
+to beat the other. This is not a claim that Causal Forest is the better
+model in general, that visit substitutes for conversion as the business
+objective, or that the bootstrap check establishes a causal mechanism —
+see Limitations, and §8 for what a decision maker can and cannot conclude
+from this analysis.
 
 ## 1. Research Question
 
@@ -179,10 +203,10 @@ applied, and none was needed to reach that more modest reading.
 
 **Figure 4 — Forest plot (Response − Causal Forest, both outcomes) — pending.**
 *This figure could not be included in this package: the source cell in
-`comparative_analysis_report.ipynb` (§5, cell `74ab5e45`) has not yet been
-executed in the committed notebook (`execution_count: None`). See
-`reports/figures/figure_list.md` for what needs to happen before this
-figure can be added.*
+`comparative_analysis_report.ipynb` (§5, cell `74ab5e45`) had not yet been
+executed in the committed notebook as of this package's assembly (a full
+re-execution was in progress at `BOOTSTRAP_MODE="final"`, estimated ~3
+hours on this machine — see `reports/figures/figure_list.md` for status).*
 
 *Evidence source: `comparative_analysis_report.ipynb` §5, `BOOTSTRAP_TABLE`; `src.reporting.paired_bootstrap_gaps`. Reproduced in `reports/tables/table5_bootstrap_ci.csv`.*
 
@@ -269,6 +293,17 @@ once given a denser signal. This is not a claim that Causal Forest is
 universally superior, that visit replaces conversion as the business
 objective, or that either result establishes a causal mechanism — see
 Limitations for what this evidence does and does not support.
+
+**Practical implication.** For a team choosing a targeting approach today,
+this analysis does not provide statistical grounds to prefer the causal
+estimators over the simpler response baseline on conversion, the metric
+that matters for the business — nor does it provide grounds to prefer the
+response baseline over them. Neither approach should be presented as
+proven better on conversion from this evidence alone. If resolving that
+ambiguity matters, the indicated next step is gathering more
+conversion-labeled data or extending the observation window — what the
+visit robustness check suggests would help is a denser outcome signal, not
+a different model choice.
 
 ---
 

@@ -46,11 +46,15 @@ modified). Figure 4 could not be extracted; see the note below.
   "inconclusive under conversion, resolvable under visit"
 - **Why it's missing:** this cell was added to the notebook in a prior
   session and validated only via `nbformat` and a separate temporary
-  execution copy — the cell as committed has `execution_count: None` and
-  `outputs: []`. It has never actually been run inside the real,
-  committed notebook, so there is no rendered image to extract. **Action
-  needed before PDF generation:** re-execute
-  `comparative_analysis_report.ipynb` (fits nothing — it only reads
-  existing `outputs/` artifacts, so this is fast and low-risk) so this
-  cell produces a real output, then re-extract this figure the same way
-  Figures 1–3 were extracted.
+  execution copy — the cell as committed had `execution_count: None` and
+  `outputs: []`. A real, in-place re-execution of the full notebook
+  (`BOOTSTRAP_MODE="final"` preserved, no artifact regeneration, no model
+  training) was launched to fix this. Profiling found the paired
+  bootstrap itself (not a bug) is the cost driver: `evaluate_ranking`
+  takes ~4.4s/call on the real 2,096,939-row test partition, each
+  bootstrap draw calls it twice, and 500 draws × 2 outcomes measures out
+  to roughly **~3 hours** on this machine (vs. the notebook's own
+  documented "~20 minutes" estimate, evidently calibrated on faster
+  hardware). **Action once execution finishes:** re-extract this figure
+  from the notebook's now-populated cell output the same way Figures 1–3
+  were extracted, and update this entry.
