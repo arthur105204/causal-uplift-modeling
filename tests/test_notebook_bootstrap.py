@@ -18,12 +18,26 @@ from pathlib import Path
 import pytest
 
 NOTEBOOK_DIR = Path(__file__).resolve().parent.parent / "notebooks"
-NOTEBOOKS = sorted(NOTEBOOK_DIR.glob("*.ipynb"))
-# 01-04 are the methodology notebooks and must share one identical bootstrap.
-# kaggle_execution.ipynb is the one-click runner: its bootstrap is a deliberate
-# superset (it additionally offers to git-clone the repo on Kaggle), so it is
-# held to the same *behaviour* but not to byte-identical source.
+# Recursive: notebooks now live in subdirectories (notebooks/evidence/,
+# notebooks/experiments/), not just directly under notebooks/ -- a
+# non-recursive glob silently stops covering a notebook the moment it moves
+# into a subdirectory, which is exactly what happened when 01-04 moved to
+# notebooks/evidence/ (see git history around that reorganization).
+NOTEBOOKS = sorted(
+    p for p in NOTEBOOK_DIR.rglob("*.ipynb") if ".ipynb_checkpoints" not in p.parts
+)
+# 01-04 (now under notebooks/evidence/) are the methodology notebooks and must
+# share one identical bootstrap. kaggle_execution.ipynb is the one-click
+# runner: its bootstrap is a deliberate superset (it additionally offers to
+# git-clone the repo on Kaggle), so it is held to the same *behaviour* but not
+# to byte-identical source.
 METHODOLOGY_NOTEBOOKS = [p for p in NOTEBOOKS if p.name[:2].isdigit()]
+# notebooks/experiments/ -- one runner notebook per outcome (conversion,
+# visit). These must also share one identical bootstrap with each other: a
+# drifting copy here is how one outcome's notebook ends up broken on Kaggle
+# while the other works, the same failure mode METHODOLOGY_NOTEBOOKS guards
+# against for 01-04.
+EXPERIMENT_NOTEBOOKS = [p for p in NOTEBOOKS if p.parent.name == "experiments"]
 
 
 def _bootstrap_source(notebook_path: Path) -> str:
@@ -56,10 +70,11 @@ def _run_bootstrap(source: str, cwd: Path) -> Path:
         sys.path[:] = previous_path
 
 
-# kaggle_execution.ipynb's bootstrap requires every one of these to accept a
-# repo copy (see its REQUIRED_MARKERS) -- the methodology notebooks (01-04)
-# only require src/data.py, but a fixture repo with all six still satisfies
-# that weaker check too, so one fixture covers both.
+# kaggle_execution.ipynb AND notebooks/experiments/*_experiment.ipynb both
+# require every one of these to accept a repo copy (see either notebook's
+# own REQUIRED_MARKERS) -- the evidence notebooks (01-04) only require
+# src/data.py, but a fixture repo with all six still satisfies that weaker
+# check too, so one fixture covers every notebook variant under test.
 REQUIRED_MARKERS = (
     "src/data.py",
     "src/models.py",
@@ -71,9 +86,10 @@ REQUIRED_MARKERS = (
 
 
 def _fake_repo(root: Path) -> Path:
-    (root / "src").mkdir(parents=True)
     for marker in REQUIRED_MARKERS:
-        (root / marker).write_text("# marker\n", encoding="utf-8")
+        marker_path = root / marker
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        marker_path.write_text("# marker\n", encoding="utf-8")
     return root
 
 
@@ -149,7 +165,18 @@ def test_methodology_notebooks_ship_the_same_bootstrap() -> None:
     """01-04 must share one bootstrap; a drifting copy is how one notebook
     ends up broken on Kaggle while the others work."""
 
+    assert METHODOLOGY_NOTEBOOKS, "expected notebooks/evidence/0*.ipynb to be discovered"
     sources = {p.name: _bootstrap_source(p) for p in METHODOLOGY_NOTEBOOKS}
+    assert len(set(sources.values())) == 1, f"bootstrap differs across notebooks: {sorted(sources)}"
+
+
+def test_experiment_notebooks_ship_the_same_bootstrap() -> None:
+    """conversion_experiment.ipynb and visit_experiment.ipynb must share one
+    bootstrap; a drifting copy is how one outcome's notebook ends up broken
+    on Kaggle while the other works."""
+
+    assert EXPERIMENT_NOTEBOOKS, "expected notebooks/experiments/*.ipynb to be discovered"
+    sources = {p.name: _bootstrap_source(p) for p in EXPERIMENT_NOTEBOOKS}
     assert len(set(sources.values())) == 1, f"bootstrap differs across notebooks: {sorted(sources)}"
 
 
