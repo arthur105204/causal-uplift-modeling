@@ -1,0 +1,5 @@
+model,objective,role
+Response LightGBM,P(Y|X) -- naive targeting baseline,non-causal comparator
+T-Learner,tau(X) -- CATE estimation,causal estimator (two per-arm models, differenced)
+X-Learner,tau(X) -- CATE estimation,causal estimator (cross-fitted correction of T-Learner)
+Causal Forest,tau(X) -- CATE estimation,causal estimator (honest forest, splits on effect heterogeneity)

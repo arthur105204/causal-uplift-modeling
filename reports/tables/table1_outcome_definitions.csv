@@ -1,0 +1,3 @@
+outcome,definition,prevalence,treatment_rate,n_test_rows,role
+conversion,User converts (completes a purchase) following ad exposure,0.002917,0.85,2096939,primary business outcome (rare)
+visit,User visits the advertiser's site following ad exposure,0.046631,0.85,2096939,robustness check (denser, same rows)

@@ -1,0 +1,7 @@
+outcome,metric,ci_low,ci_high,conclusion
+conversion,Qini above random,-37.84997,117.68348,not statistically distinguishable
+conversion,AUUC above random,-42.90004,139.47764,not statistically distinguishable
+conversion,uplift@10%,-0.00059,0.00079,not statistically distinguishable
+visit,Qini above random,-596.52687,-252.30452,statistically distinguishable
+visit,AUUC above random,-678.75348,-277.27760,statistically distinguishable
+visit,uplift@10%,-0.01249,-0.00370,statistically distinguishable
