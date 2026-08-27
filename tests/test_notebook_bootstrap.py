@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -177,6 +178,30 @@ def test_execution_notebook_passes_the_raw_frame_to_the_x_learner() -> None:
     notebook = json.loads(path.read_text(encoding="utf-8"))
     source = "\n".join("".join(c["source"]) for c in notebook["cells"] if c["cell_type"] == "code")
     assert "fit_x_learner(train_frame" in source, "X-Learner must receive the raw train frame"
+
+
+def test_execution_notebook_scopes_every_stage_dir_call_by_outcome() -> None:
+    """Regression guard: conversion and visit must create and read
+    independent artifact directories. src.artifacts.stage_dir() defaults an
+    omitted `outcome` to "conversion" -- a notebook cell that calls
+    stage_dir("baseline"|"uplift"|"causal_forest"|"report") without also
+    passing `outcome=` silently reads/writes the conversion tree even on a
+    visit run (this is exactly the bug that produced
+    FileNotFoundError: outputs/conversion/baseline/roc_curve.csv on an
+    OUTCOME="visit" run -- src.data/src.artifacts/src.pipeline were never
+    the problem, two notebook call sites were)."""
+
+    path = NOTEBOOK_DIR / "kaggle_execution.ipynb"
+    notebook = json.loads(path.read_text(encoding="utf-8"))
+    source = "\n".join("".join(c["source"]) for c in notebook["cells"] if c["cell_type"] == "code")
+
+    unscoped = re.findall(
+        r'stage_dir\(\s*["\'](?:baseline|uplift|causal_forest|report)["\']\s*\)', source,
+    )
+    assert not unscoped, (
+        f"found stage_dir(...) call(s) for an outcome-scoped stage with no `outcome=` "
+        f"argument -- these silently default to the conversion tree: {unscoped}"
+    )
 
 
 def test_pip_package_map_translates_sklearn_to_scikit_learn() -> None:
