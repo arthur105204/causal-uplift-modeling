@@ -156,6 +156,150 @@ other metrics' point estimates, rather than reproducing them as figures.
 
 ---
 
+---
+
+## Reviewer self-check (before drafting)
+
+**1. Is the central narrative scientifically defensible?** Mostly, but it
+currently overreaches in one place. "Outcome sparsity, not model choice, is
+the binding constraint" is stated as settled fact. It is a reasonable
+inference — same rows, same estimators, only prevalence differs, and the
+statistical conclusion flips — but it is not the only possible explanation
+for why `visit` resolves what `conversion` doesn't (see Attack Point 1
+below). The narrative should be phrased as the best-supported explanation,
+not the only one.
+
+**2. Are claims separated from evidence?** Yes, structurally — "Key
+findings" and "Evidence supporting each finding" are already split into
+separate tables, and the per-finding evidence cites exact artifact values
+and CIs rather than restating the claim. This separation should carry
+through into the actual memo's prose (findings stated, then "see Table/CI
+X" — not blended into one sentence).
+
+**3. Are any conclusions too strong?** One: labeling finding 2 (visit
+result) a co-equal "headline finding" next to finding 1 (conversion result)
+risks the memo reading as "Causal Forest wins" by structural emphasis, even
+though the prose correctly hedges it. See Attack Point 5.
+
+**4. Would a skeptical reviewer challenge any statement?** Yes — six
+concrete points identified below, not hypothetical ones. Two (Attack Points
+1 and 3) do not have a fully satisfying evidence-based answer from what's
+already computed; the honest response for those is to add the caveat to the
+memo, not to argue it away.
+
+**5. Are conversion and visit roles framed correctly?** Substantially yes —
+"visit is a sensitivity check, not a substitute primary result" matches
+every source document consistently. One terminology precision issue: see
+Attack Point 6.
+
+## Reviewer Attack Points
+
+**1. "You're attributing the conversion/visit divergence to outcome
+sparsity — how do you know it isn't that `visit` and `conversion` simply
+have different, unrelated treatment-effect structures, and the comparison
+is measuring two different things that happen to diverge?"**
+- *Why it matters:* the entire central narrative rests on framing `visit`
+  as a denser view of "the same underlying difficulty," not a different
+  estimation problem. If a reviewer doesn't accept that framing, the
+  "sparsity resolved the ambiguity" story collapses into "two unrelated
+  results, no lesson connects them."
+- *Evidence-based response:* the two outcomes share the exact same test
+  rows, features, and estimators (Section 2, `comparative_analysis_report.ipynb`)
+  and visit is causally upstream of conversion by construction (every
+  conversion is preceded by a visit) — which supports treating them as
+  related, not arbitrary. But **no artifact in this project directly
+  measures whether visit-CATE rankings correlate with conversion-CATE
+  rankings** (e.g., rank correlation between the two outcomes' predicted
+  uplift scores). Without that, "denser view of the same problem" is a
+  plausible but unverified assumption. **Recommended action for Phase 3:**
+  state this explicitly as an assumption, not a proven fact, and add it to
+  Limitations rather than asserting it as settled in the Discussion.
+
+**2. "Why did you cherry-pick Response LightGBM vs. Causal Forest for the
+bootstrap — did you choose the pairing because it's the most favorable
+comparison for whichever model already looks ahead?"**
+- *Why it matters:* choosing a comparison pair after seeing which model
+  leads is a classic selection-bias / "look elsewhere" critique that would
+  undermine the statistical evidence's credibility.
+- *Evidence-based response:* verified directly in
+  `comparative_analysis_report.ipynb` cell 25/26 — the Response-vs-Causal-Forest
+  pairing is **hardcoded identically for both outcomes**, decided in advance
+  of and independent of which model leads in either table (Causal Forest is
+  runner-up under `conversion` but leads under `visit` — the pairing itself
+  never changes). This is a genuine defense against the cherry-picking
+  charge for the memo's primary evidence. It does **not** answer the
+  narrower question of why Causal Forest specifically (vs. T-/X-Learner) was
+  chosen as "the" causal contender in the first place — that rationale
+  (most architecturally distinct / most sophisticated estimator, per
+  README's Methodology notes) is currently implicit and should be stated
+  explicitly in Phase 3's Experimental Design section.
+
+**3. "500 bootstrap resamples — is that enough for a stable 95% CI,
+especially for the conversion-outcome intervals whose bounds sit only
+moderately far from zero (e.g., Qini CI `[-37.85, 117.68]`)? Would a
+different seed meaningfully change whether these exclude zero?"**
+- *Why it matters:* if the conversion-outcome "inclusive of zero" result is
+  sensitive to resample count or seed, the memo's headline "inconclusive"
+  finding is less solid than presented.
+- *Evidence-based response:* this cannot be fully answered from what's
+  already computed — no seed-sensitivity or resample-count-sensitivity
+  check exists in any notebook or artifact. `tests/test_reporting.py`'s
+  `test_paired_bootstrap_is_deterministic_given_a_fixed_seed` confirms the
+  procedure is deterministic given a seed, which rules out non-reproducibility,
+  but says nothing about how much the CI would move under a different seed
+  or n_boot. **Recommended action:** do not claim precision beyond what was
+  checked; this is a legitimate addition to Limitations rather than a point
+  the memo can rebut with existing evidence.
+
+**4. "Are you correcting for testing three metrics per outcome? Could
+'significant on all three' under `visit` partly reflect that the three
+metrics are correlated, rather than three independent confirmations?"**
+- *Why it matters:* uncorrected multiple comparisons can overstate the
+  strength of "significant on every metric checked" language.
+- *Evidence-based response:* Qini above random, AUUC above random, and
+  uplift@10% are constructed from the same ranking and the same
+  cumulative outcome sums (`src/evaluation.py`), so they are expected to be
+  highly correlated, not independent tests — "three separate confirmations"
+  overstates it. The visit-outcome CIs are also far from zero relative to
+  their width (e.g., Qini CI `[-596.53, -252.30]`), which is reassuring on
+  its own terms, but the memo should describe the three metrics as
+  "consistent with each other" rather than "three independent pieces of
+  evidence," and should not claim a multiple-comparison correction was
+  applied, because none was.
+
+**5. "By presenting the conversion result (inconclusive) and the visit
+result (significant) as two co-equal 'headline findings,' doesn't the memo
+structurally overweight a secondary sensitivity analysis relative to the
+primary business outcome — even if the prose hedges correctly?"**
+- *Why it matters:* README and every notebook agree conversion is primary
+  and visit is secondary; a memo that gives visit's positive result equal
+  visual/structural billing risks readers remembering "Causal Forest won"
+  and forgetting it was on the secondary outcome.
+- *Evidence-based response:* this is a valid framing risk, not a factual
+  error — there is no evidence to "rebut," only a presentation choice to
+  fix. **Recommended action for Phase 3:** in the Executive Summary and
+  Section 8 (Conclusion), state the conversion result first and as the
+  primary takeaway, with the visit result explicitly introduced as *what it
+  tells us about the conversion result's reliability* (i.e., "the ambiguity
+  under conversion is not evidence of no effect — the same comparison
+  becomes resolvable once given denser signal") rather than as a
+  free-standing second win.
+
+**6. "Is 'sensitivity analysis' the right term here? A classical
+sensitivity analysis perturbs an assumption while holding the estimand
+fixed; this instead swaps the outcome variable itself — that's a different
+kind of check."**
+- *Why it matters:* precise terminology matters for a technical/academic
+  reviewer audience; using "sensitivity analysis" loosely invites a
+  correction that distracts from the substantive finding.
+- *Evidence-based response:* the project's own documents already hedge
+  toward "robustness check" in places (`comparative_analysis_report.ipynb`
+  Section 1: "a sensitivity/robustness analysis run on the exact same row
+  partition"). **Recommended action:** Phase 3 should consistently use
+  "robustness check across a related outcome" as the primary description,
+  reserving "sensitivity analysis" only if used loosely and defined on
+  first use, to preempt this critique rather than trigger it.
+
 ## Open questions before drafting (Phase 3)
 
 - Confirm target length: this structure supports either a ~3–4 page memo
