@@ -31,10 +31,12 @@ users by incremental treatment effect on **conversion**, the primary
 business outcome. Conversion is rare (0.29% prevalence), and under it,
 Response LightGBM's point-estimate ranking edges out all three causal
 estimators, but a paired bootstrap shows this gap is **not statistically
-distinguishable from resampling noise** on any of the three metrics checked
-(Qini above random, AUUC above random, uplift@10%). This result is
-genuinely inconclusive, not evidence that the causal estimators fail to add
-value.
+distinguishable from resampling noise** on any of the three ranking metrics
+checked: Qini and AUUC (two different ways of scoring how much better than
+random targeting a model's ranking is, summed across the whole ranked
+list) and uplift@10% (the incremental effect captured if only the top 10%
+of ranked users were targeted). This result is genuinely inconclusive, not
+evidence that the causal estimators fail to add value.
 
 As a robustness check, we repeat the identical comparison on **visit**, a
 much denser behavioral outcome (4.66% prevalence, ~16x conversion's rate) on
@@ -106,23 +108,28 @@ held-out test partition.*
 | X-Learner | `tau(X)` | Cross-fitted correction of T-Learner's imbalanced-arm bias |
 | Causal Forest | `tau(X)` | Honest random forest splitting directly on treatment-effect heterogeneity |
 
+("Cross-fitted" means each user's prediction comes from a model that never
+saw that user during training, avoiding the bias of a model grading its own
+homework. "Honest" means a tree decides *where* to split the data on one
+subset and estimates the effect size on a separate subset, so the same rows
+are never used to both pick and score a split.)
+
 All four are scored on the test partition only (never touched during
 fitting or model selection) with **Qini above the theoretical random
-reference** as the primary ranking statistic, **AUUC** as a secondary,
-differently-weighted view of the same ranking, and **uplift@K** at five
+reference** (how much better than random targeting the model's ranking
+does, cumulated as more users are targeted) as the primary ranking
+statistic, **AUUC** (Area Under the Uplift Curve — a companion ranking
+score built the same way but weighted differently across the ranking) as a
+secondary view of the same ranking, and **uplift@K** (the incremental
+effect captured if only the top K% of ranked users were targeted) at five
 coverage levels.
 
 Section 5's significance check compares **Response LightGBM against Causal
-Forest** specifically. This pairing is fixed identically for both outcomes
-— it is not chosen after seeing which model leads: Causal Forest is the
-runner-up by point estimate under conversion and the leader under visit,
-and the same two models are tested either way. Causal Forest is used as the
-causal-side comparator (rather than T-/X-Learner) because it is the most
-architecturally distinct of the three causal estimators — it splits
-directly on treatment-effect heterogeneity rather than differencing two
-separately-fit outcome models. T-Learner and X-Learner's point estimates
-are reported in §4 for completeness but are not carried into the
-significance check.
+Forest** specifically, using the same pairing under both outcomes.
+T-Learner and X-Learner's point estimates are reported in §4 for
+completeness but are not carried into the significance check; the
+rationale for this specific pairing is given in Robustness and Limitations,
+below.
 
 *Full evaluation-protocol and modeling-methodology documentation is
 available in the project README.*
@@ -185,9 +192,10 @@ evaluation pipeline (visit outcome).*
 A point-estimate leaderboard always produces a "winner," even when two
 models are statistically indistinguishable. We use a paired bootstrap
 (500 resamples of the test rows with replacement; the same resample index
-applied to both models on each draw) to compute a 95% CI on the
-**Response LightGBM minus Causal Forest** gap, per outcome, for the three
-metrics shown above.
+applied to both models on each draw) to compute a 95% CI — a confidence
+interval, the range that would contain the true gap in about 95 of 100
+repeats of this resampling procedure — on the **Response LightGBM minus
+Causal Forest** gap, per outcome, for the three metrics shown above.
 
 **Table 5 — Paired bootstrap 95% CI, Response LightGBM minus Causal Forest**
 
@@ -271,9 +279,12 @@ these two models against the others.
   full-cardinality native categorical splits), a memory/runtime tradeoff
   the comparison does not adjust for.
 - **Not a validated causal mechanism.** `f0`–`f11` are anonymized with no
-  known business meaning, and predicted CATE is not a true individual
-  treatment effect — both potential outcomes are never observed for the
-  same user, so no PEHE against ground truth is reported. The bootstrap
+  known business meaning, and the predicted CATE (the conditional average
+  treatment effect `tau(X)` defined in §1, under its standard abbreviation)
+  is not a true individual treatment effect — both potential outcomes are
+  never observed for the same user, so no PEHE (Precision in Estimation of
+  Heterogeneous Effect, the standard accuracy check against true individual
+  causal effects) against ground truth is reported. The bootstrap
   establishes statistical distinguishability of a ranking-metric gap; it
   does not establish or validate a causal mechanism.
 - **Specific to this dataset, these implementations, one hyperparameter
@@ -309,33 +320,44 @@ a different model choice.
 
 ---
 
-## Robustness of Conclusions to Anticipated Critiques
+## Robustness and Limitations
 
-The following methodological critiques were anticipated during the
-preparation of this analysis, together with how each is addressed above:
+A careful reader — a technical reviewer, or an adjacent-field researcher
+checking this memo's methodology — may reasonably raise the six questions
+below. Each is answered here directly, with a pointer to where the same
+point is discussed in the main text.
 
-1. **Sparsity vs. genuinely different effect structure** — addressed: §6
-   explicitly states this as an inference and an unverified assumption,
-   not settled fact; restated in §7 as a named limitation.
-2. **Why Response vs. Causal Forest, and is the pairing cherry-picked** —
-   addressed: §3 states the pairing is fixed identically across both
-   outcomes (not chosen after seeing which model leads) and gives the
-   architectural rationale for Causal Forest as the causal-side
-   comparator.
-3. **500 resamples — is that enough, and is it seed-sensitive** —
-   addressed as an open limitation in §7; no evidence exists to rebut this,
-   so the draft does not claim more precision than was checked.
-4. **Multiple comparisons across three correlated metrics** — addressed:
-   §5 explicitly frames the three metrics as "consistent with one another"
-   rather than independent confirmations, and states no correction was
-   applied or needed under that framing.
-5. **Structural overweighting of the secondary (visit) result** —
-   addressed: Executive Summary and §8 both state the conversion result
-   first and frame the visit result as informing the conversion result's
-   reliability, not as a co-equal second finding.
-6. **"Sensitivity analysis" terminology precision** — addressed: this
-   draft uses "robustness check" throughout and does not use "sensitivity
-   analysis" as a label for the visit comparison.
+1. **Is the sparsity explanation just an assumption, not a proven fact?**
+   Yes, and the memo says so directly: §6 states it as an inference and an
+   unverified assumption, not a settled fact, and §7 restates it as a
+   named limitation.
+2. **Why Response LightGBM vs. Causal Forest specifically, and is that
+   pairing cherry-picked?** No — the pairing is fixed identically across
+   both outcomes; it is not chosen after seeing which model leads: Causal
+   Forest is the runner-up by point estimate under conversion and the
+   leader under visit, and the same two models are tested either way.
+   Causal Forest is used as the causal-side comparator (rather than
+   T-/X-Learner) because it is the most architecturally distinct of the
+   three causal estimators — it splits directly on treatment-effect
+   heterogeneity rather than differencing two separately-fit outcome
+   models, as described in §3.
+3. **Are 500 bootstrap resamples enough, and is the result seed-sensitive?**
+   This is an open limitation, stated in §7: no evidence exists to rebut
+   the concern, so the memo does not claim more precision than was
+   actually checked.
+4. **Doesn't testing three correlated metrics inflate the chance of a
+   false "significant" result?** §5 explicitly frames the three metrics as
+   consistent with one another rather than independent confirmations, and
+   states no multiple-comparisons correction was applied or needed under
+   that framing.
+5. **Is the secondary (visit) result being given more weight than it
+   deserves?** No — the Executive Summary and §8 both state the conversion
+   result first and frame the visit result as informing the conversion
+   result's reliability, not as a co-equal second finding.
+6. **Is "robustness check" a precise term for what the visit comparison
+   does?** This memo uses "robustness check" throughout and deliberately
+   avoids the more loaded term "sensitivity analysis" for the visit
+   comparison.
 
-Each of the six critiques above has either a stated resolution in the
-main text or an explicit, honestly-flagged limitation in Section 7.
+Each of the six questions above has either a stated resolution in the main
+text or an explicit, honestly-flagged limitation in §7.
