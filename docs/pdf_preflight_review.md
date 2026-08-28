@@ -112,6 +112,17 @@ retrain anything — after which this figure can be extracted the same way
 Figures 1–3 were. `reports/research_memo.md` currently carries an explicit
 note in place of this figure rather than a broken image reference.
 
+> **Update (Phase 4.1): resolved.** This blocker was subsequently fixed —
+> full top-to-bottom re-execution proved impractical in this environment
+> (paired bootstrap alone costs ~3h; see that phase's notes), so cell
+> `70eab150`'s already-valid, previously-computed real `BOOTSTRAP_TABLE`
+> output was reused to produce Figure 4 without recomputing the bootstrap.
+> The notebook's cell `74ab5e45` now has `execution_count=15` and a real
+> `image/png` output; `reports/figures/fig4_bootstrap_forest.png` and
+> `reports/research_memo.md` both carry the real figure. Left as-written
+> above for the historical record of what this preflight found at the
+> time — see `docs/final_release_review.md` for current status.
+
 ## 4. PDF layout plan (recommendation only — no PDF generated)
 
 **Estimated length.** The prose is ~2,300 words. At a typical single-column,
@@ -167,7 +178,8 @@ fragment the closing argument.
 ## Summary of actions before PDF generation
 
 1. Resolve the Figure 4 blocker (re-execute the report notebook's §5 forest-plot
-   cell; re-extract the image).
+   cell; re-extract the image). **Resolved in Phase 4.1** — see the update
+   note under Section 3 above.
 2. Decide whether to apply the two Executive-readability recommendations in
    §1 (notation placement, explicit practical-implication sentence) before
    finalizing — no scientific wording issue blocks this, it is a clarity
