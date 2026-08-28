@@ -55,8 +55,11 @@ styles = {
         keepWithNext=True,
     ),
     "ExecLabel": ParagraphStyle(
-        "ExecLabel", fontName="Times-Bold", fontSize=9.6, leading=12.2,
-        spaceBefore=4, spaceAfter=1.5,
+        # Base font is Times-Roman, matching Body -- only the "**Label.**"
+        # run-in itself is bold, via inline_md's <b> tag. A bold *base* font
+        # here would additionally bold the rest of the paragraph's text.
+        "ExecLabel", fontName="Times-Roman", fontSize=9.6, leading=12.2,
+        alignment=TA_JUSTIFY, spaceBefore=4, spaceAfter=4.5,
     ),
     "Body": ParagraphStyle(
         "Body", fontName="Times-Roman", fontSize=9.6, leading=12.2,
@@ -95,8 +98,16 @@ def inline_md(text: str) -> str:
     # (true minus, em/en dash, section sign) that a text extractor or a
     # non-embedded-font viewer could render incorrectly.
     text = text.replace("\u2212", "-")
-    text = text.replace("\u2014", " -- ").replace("\u2013", "-")
-    text = re.sub(r"\u00a7(\d)", r"Section \1", text)
+    # Section ranges ("\u00a75\u2013\u00a76") must be resolved before the
+    # generic en-dash replacement below turns "\u2013" into a bare "-",
+    # which would otherwise merge into "Section 5-Section 6".
+    text = re.sub(r"\u00a7(\d+)\u2013\u00a7(\d+)", r"Sections \1-\2", text)
+    text = re.sub(r"\u00a7(\d+)", r"Section \1", text)
+    # Collapse any surrounding whitespace around an em-dash into exactly one
+    # space per side -- the source already spaces its em-dashes ("word \u2014
+    # word"), so a plain substitution would double that spacing.
+    text = re.sub(r"\s*\u2014\s*", " -- ", text)
+    text = text.replace("\u2013", "-")
     text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     # Protect code spans (which may contain a literal "*", e.g. a glob path)
@@ -172,6 +183,34 @@ def build_image(md_line: str):
     return img
 
 
+_CAPTION_LINE_RE = re.compile(r"^\*\*[^*]+\*\*\.?$")
+_CAPTION_FIGTABLE_RE = re.compile(r"^\*\*(Figure|Table) \d")
+_EXEC_LABEL_RE = re.compile(r"^\*\*[^*]+\.\*\*\s")
+_NUMBERED_ITEM_RE = re.compile(r"^\d+\.\s")
+
+
+def _is_new_block(line_stripped: str) -> bool:
+    """True if this (already-stripped) line starts a new flowable block
+    rather than continuing the paragraph/list-item being accumulated.
+
+    Used instead of a naive "starts with '*'" check so that a hard-wrapped
+    line that merely *contains* inline markdown -- e.g. a sentence that
+    happens to wrap right before a `**bold**` span -- is not mistaken for
+    the start of a new paragraph and split off into its own flowable.
+    """
+    if not line_stripped:
+        return True
+    if line_stripped.startswith(("#", "|", "!", "---")):
+        return True
+    if line_stripped.startswith("- ") or _NUMBERED_ITEM_RE.match(line_stripped):
+        return True
+    if _CAPTION_LINE_RE.match(line_stripped) or _CAPTION_FIGTABLE_RE.match(line_stripped):
+        return True
+    if line_stripped.startswith("*") and line_stripped.endswith("*") and not line_stripped.startswith("**"):
+        return True  # whole-line italic source note
+    return False
+
+
 def build_flowables(md_text: str):
     lines = md_text.splitlines()
     flowables = []
@@ -241,15 +280,9 @@ def build_flowables(md_text: str):
             flowables.append(Spacer(1, 6))
             continue
 
-        # bold caption line, e.g. "**Figure 1 -- ...**" or "**Executive Summary label.**"
-        if re.match(r"^\*\*[^*]+\*\*\.?$", stripped) or re.match(r"^\*\*(Figure|Table) \d", stripped):
+        # bold caption line, e.g. "**Figure 1 -- ...**" or "**Table 1 -- ...**"
+        if _CAPTION_LINE_RE.match(stripped) or _CAPTION_FIGTABLE_RE.match(stripped):
             flowables.append(para(stripped, "Caption"))
-            i += 1
-            continue
-
-        # exec-summary bold lead-in labels like "**The business problem.** text..."
-        if re.match(r"^\*\*[^*]+\.\*\*\s", stripped):
-            flowables.append(para(stripped, "ExecLabel"))
             i += 1
             continue
 
@@ -258,13 +291,13 @@ def build_flowables(md_text: str):
             i += 1
             continue
 
-        if re.match(r"^\d+\.\s", stripped):
+        if _NUMBERED_ITEM_RE.match(stripped):
             items = []
-            while i < n and re.match(r"^\d+\.\s", lines[i].strip()):
-                item_text = re.sub(r"^\d+\.\s", "", lines[i].strip())
+            while i < n and _NUMBERED_ITEM_RE.match(lines[i].strip()):
+                item_text = _NUMBERED_ITEM_RE.sub("", lines[i].strip())
                 j = i + 1
-                while j < n and lines[j].strip() and not re.match(r"^\d+\.\s", lines[j].strip()) \
-                        and not lines[j].strip().startswith(("#", "-", "*", "|")):
+                while j < n and lines[j].strip() and not _NUMBERED_ITEM_RE.match(lines[j].strip()) \
+                        and not _is_new_block(lines[j].strip()):
                     item_text += " " + lines[j].strip()
                     j += 1
                 items.append(ListItem(para(item_text, "Numbered"), leftIndent=14))
@@ -278,7 +311,7 @@ def build_flowables(md_text: str):
             while i < n and lines[i].strip().startswith("- "):
                 item_text = lines[i].strip()[2:]
                 j = i + 1
-                while j < n and lines[j].strip() and not lines[j].strip().startswith(("-", "#", "|", "*", "!")):
+                while j < n and lines[j].strip() and not _is_new_block(lines[j].strip()):
                     item_text += " " + lines[j].strip()
                     j += 1
                 items.append(ListItem(para(item_text, "Bullet"), leftIndent=14))
@@ -287,13 +320,19 @@ def build_flowables(md_text: str):
             flowables.append(Spacer(1, 4))
             continue
 
-        # plain paragraph -- accumulate until blank line
+        # plain paragraph, including "**Label.** text..." lead-ins (Executive
+        # Summary, "Practical implication.") -- accumulate every line until a
+        # new block starts, THEN decide styling from the merged text. Deciding
+        # per-line here (as a prior version did) orphaned the "**Label.**"
+        # line into its own mis-aligned paragraph and cut its sentence in two.
         buf = [stripped]
         i += 1
-        while i < n and lines[i].strip() and not lines[i].strip().startswith(("#", "|", "-", "!", "*", "1.")):
+        while i < n and lines[i].strip() and not _is_new_block(lines[i].strip()):
             buf.append(lines[i].strip())
             i += 1
-        flowables.append(para(" ".join(buf), "Body"))
+        merged = " ".join(buf)
+        style = "ExecLabel" if _EXEC_LABEL_RE.match(merged) else "Body"
+        flowables.append(para(merged, style))
 
     return flowables
 
