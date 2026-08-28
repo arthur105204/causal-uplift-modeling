@@ -1,13 +1,11 @@
 # Does Outcome Sparsity Limit Uplift-Ranking Evidence? A Comparative Analysis on CRITEO-UPLIFTv2.1
 
-*Research memo. Sources: `notebooks/reports/comparative_analysis_report.ipynb`,
-`notebooks/experiments/conversion_experiment.ipynb`, `notebooks/experiments/visit_experiment.ipynb`,
-`README.md`, and `outputs/{conversion,visit}/*/metrics.json`. Every number below is
-read directly from those artifacts. Prose identical to `docs/research_memo_draft.md`
-as of this package's assembly (Phase 4.1: Executive Summary and Conclusion revised
-for a plain-language-first readability pass; findings, numbers, and conclusions
-unchanged from the Phase 3 draft) — see `docs/pdf_preflight_review.md` for the
-editorial audit that prompted the readability revision.*
+*Research memo summarizing a comparative evaluation of causal uplift
+estimators on CRITEO-UPLIFTv2.1. All reported statistics are computed
+from held-out test-set evaluation artifacts produced by the project's
+experimental evaluation pipeline; full analysis code and computational
+provenance are available in the accompanying reproducibility
+repository.*
 
 ## Executive Summary
 
@@ -71,8 +69,6 @@ better ranking than the simpler response baseline on held-out data — and
 whether any answer to that question is stable across two related but
 distinct outcome definitions on the same population.
 
-*Evidence source: `comparative_analysis_report.ipynb` §1; README "Research objective."*
-
 ## 2. Data and Outcome Definitions
 
 Both outcomes are evaluated on the identical seeded 70/15/15
@@ -95,9 +91,9 @@ conclusions are limited by label sparsity, addressed directly in §5–§6.
 
 **Figure 1 — Outcome prevalence: conversion vs. visit**
 ![Outcome prevalence: conversion vs. visit](figures/fig1_outcome_prevalence.png)
-*Source: `comparative_analysis_report.ipynb` §2, cell `d36f5c78`. See `reports/figures/figure_list.md` for the full caption.*
 
-*Evidence source: `comparative_analysis_report.ipynb` §2, `outcome_table`; reproduced in `reports/tables/table1_outcome_definitions.csv`.*
+*Prevalence and treatment-rate figures are computed directly from the
+held-out test partition.*
 
 ## 3. Experimental Design
 
@@ -128,7 +124,8 @@ separately-fit outcome models. T-Learner and X-Learner's point estimates
 are reported in §4 for completeness but are not carried into the
 significance check.
 
-*Evidence source: `comparative_analysis_report.ipynb` §3, §5; README "Evaluation design," "Methodology notes." Reproduced in `reports/tables/table2_model_objectives.csv`.*
+*Full evaluation-protocol and modeling-methodology documentation is
+available in the project README.*
 
 ## 4. Results
 
@@ -155,9 +152,10 @@ top row.
 
 **Figure 3 — Qini curves, conversion panel**
 ![Qini curves by model, conversion vs. visit](figures/fig3_qini_curves.png)
-*Figures 2–3 show both outcomes together; see `reports/figures/figure_list.md`.*
+*Figures 2–3 show both outcomes together.*
 
-*Evidence source: `outputs/conversion/{baseline,causal_forest,uplift/xlearner,uplift/tlearner}/metrics.json`, via `comparative_analysis_report.ipynb`'s own model-comparison table for this outcome. Reproduced above as this memo's Table 3, and in full (all metrics) in `reports/tables/table3_conversion_comparison.csv`.*
+*Source: held-out test-set evaluation artifacts from the experimental
+evaluation pipeline (conversion outcome).*
 
 ### 4.2 Visit Robustness Check
 
@@ -179,7 +177,8 @@ the outcome the business optimizes for.
 
 *(Figures 2–3 above already show the visit panel alongside conversion.)*
 
-*Evidence source: `outputs/visit/{baseline,causal_forest,uplift/xlearner,uplift/tlearner}/metrics.json`, via `comparative_analysis_report.ipynb`'s own model-comparison table for this outcome. Reproduced above as this memo's Table 4, and in full (all metrics) in `reports/tables/table4_visit_comparison.csv`.*
+*Source: held-out test-set evaluation artifacts from the experimental
+evaluation pipeline (visit outcome).*
 
 ## 5. Statistical Evidence
 
@@ -213,9 +212,9 @@ applied, and none was needed to reach that more modest reading.
 
 **Figure 4 — Forest plot: is the Response-vs-Causal-Forest gap distinguishable from zero?**
 ![Forest plot of the six bootstrap CIs](figures/fig4_bootstrap_forest.png)
-*Source: `comparative_analysis_report.ipynb` §5, cell `74ab5e45`, `execution_count=15`. See `reports/figures/figure_list.md` for how this was produced and verified.*
 
-*Evidence source: `comparative_analysis_report.ipynb` §5, `BOOTSTRAP_TABLE`; `src.reporting.paired_bootstrap_gaps`. Reproduced in `reports/tables/table5_bootstrap_ci.csv`.*
+*Source: paired bootstrap significance analysis from the experimental
+evaluation pipeline.*
 
 ## 6. Discussion
 
@@ -247,8 +246,6 @@ point estimates under both outcomes. This memo does not draw a conclusion
 about meta-learner estimators in general from that observation — it is
 reported for completeness, and no bootstrap check was run on either of
 these two models against the others.
-
-*Evidence source: `comparative_analysis_report.ipynb` §6; README "Methodology notes."*
 
 ## 7. Limitations
 
@@ -284,8 +281,6 @@ these two models against the others.
   estimator X ranked better than estimator Y *here*," not a universal
   claim about either an outcome or a method.
 
-*Evidence source: `comparative_analysis_report.ipynb` "Limitations"; `docs/research_memo_plan.md` Reviewer Attack Points.*
-
 ## 8. Conclusion
 
 Under conversion, the primary business outcome, Response LightGBM's
@@ -314,10 +309,10 @@ a different model choice.
 
 ---
 
-## Final Self-Check — Reviewer Attack Points
+## Robustness of Conclusions to Anticipated Critiques
 
-Carried forward from `docs/research_memo_plan.md`, checked against this
-draft specifically:
+The following methodological critiques were anticipated during the
+preparation of this analysis, together with how each is addressed above:
 
 1. **Sparsity vs. genuinely different effect structure** — addressed: §6
    explicitly states this as an inference and an unverified assumption,
@@ -342,6 +337,5 @@ draft specifically:
    draft uses "robustness check" throughout and does not use "sensitivity
    analysis" as a label for the visit comparison.
 
-No new attack points were identified specific to this draft's prose beyond
-the six carried forward from the plan; all six have a stated resolution or
-an explicit, honestly-flagged limitation above.
+Each of the six critiques above has either a stated resolution in the
+main text or an explicit, honestly-flagged limitation in Section 7.
