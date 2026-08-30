@@ -48,7 +48,7 @@ No number here was retyped from memory or rounded from the memo prose.
   central question, not a second primary result
 
 ### Table 5 — `table5_bootstrap_ci.csv`
-- **Title:** Paired bootstrap 95% CI, Response LightGBM minus Causal Forest
+- **Title:** Paired bootstrap 95% CI, Causal Forest minus Response LightGBM
 - **Purpose:** State, for each outcome and metric, whether the point-estimate
   gap in Tables 3–4 is statistically distinguishable from resampling noise
 - **Source:** `comparative_analysis_report.ipynb` §5, `BOOTSTRAP_TABLE`;
@@ -56,4 +56,5 @@ No number here was retyped from memory or rounded from the memo prose.
 - **Reader takeaway:** This is the table that actually supports the memo's
   conclusion — Tables 3–4 alone cannot; a CI that includes zero (conversion)
   vs. excludes zero (visit) is the entire statistical basis for the memo's
-  central claim
+  central claim. Positive values indicate higher uplift-ranking performance
+  for Causal Forest relative to the Response baseline.

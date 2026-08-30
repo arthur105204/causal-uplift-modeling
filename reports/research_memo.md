@@ -124,8 +124,8 @@ secondary view of the same ranking, and **uplift@K** (the incremental
 effect captured if only the top K% of ranked users were targeted) at five
 coverage levels.
 
-Section 5's significance check compares **Response LightGBM against Causal
-Forest** specifically, using the same pairing under both outcomes.
+Section 5's significance check compares **Causal Forest against the Response
+LightGBM baseline** specifically, using the same pairing under both outcomes.
 T-Learner and X-Learner's point estimates are reported in §4 for
 completeness but are not carried into the significance check; the
 rationale for this specific pairing is given in Robustness and Limitations,
@@ -194,23 +194,27 @@ models are statistically indistinguishable. We use a paired bootstrap
 (500 resamples of the test rows with replacement; the same resample index
 applied to both models on each draw) to compute a 95% CI — a confidence
 interval, the range that would contain the true gap in about 95 of 100
-repeats of this resampling procedure — on the **Response LightGBM minus
-Causal Forest** gap, per outcome, for the three metrics shown above.
+repeats of this resampling procedure — on the **Causal Forest minus
+Response LightGBM** gap (evaluated model minus Response baseline), per
+outcome, for the three metrics shown above. Positive values indicate
+higher uplift-ranking performance for Causal Forest relative to the
+Response baseline; negative values indicate higher performance for the
+Response baseline.
 
-**Table 5 — Paired bootstrap 95% CI, Response LightGBM minus Causal Forest**
+**Table 5 — Paired bootstrap 95% CI, Causal Forest minus Response LightGBM**
 
-| Outcome | Metric | 95% CI (Response − Causal Forest) | Conclusion |
+| Outcome | Metric | 95% CI (Causal Forest − Response) | Conclusion |
 |---|---|---|---|
-| conversion | Qini above random | [−37.85, 117.68] | includes zero |
-| conversion | AUUC above random | [−42.90, 139.48] | includes zero |
-| conversion | uplift@10% | [−0.00059, 0.00079] | includes zero |
-| visit | Qini above random | [−596.53, −252.30] | excludes zero |
-| visit | AUUC above random | [−678.75, −277.28] | excludes zero |
-| visit | uplift@10% | [−0.01249, −0.00370] | excludes zero |
+| conversion | Qini above random | [−117.68, 37.85] | includes zero |
+| conversion | AUUC above random | [−139.48, 42.90] | includes zero |
+| conversion | uplift@10% | [−0.00079, 0.00059] | includes zero |
+| visit | Qini above random | [252.30, 596.53] | excludes zero |
+| visit | AUUC above random | [277.28, 678.75] | excludes zero |
+| visit | uplift@10% | [0.00370, 0.01249] | excludes zero |
 
 Under conversion, all three intervals include zero: the data cannot rule
-out that the true gap between Response LightGBM and Causal Forest is zero.
-Under visit, all three intervals sit entirely below zero, i.e., in Causal
+out that the true gap between Causal Forest and Response LightGBM is zero.
+Under visit, all three intervals sit entirely above zero, i.e., in Causal
 Forest's favor: the observed gap is unlikely to be explained by sampling
 variation alone. Because Qini, AUUC, and uplift@10% are constructed from
 the same ranking and the same cumulative outcome sums, these three results
@@ -218,7 +222,7 @@ should be read as **consistent with one another**, not as three
 independent confirmations — no correction for multiple comparisons was
 applied, and none was needed to reach that more modest reading.
 
-**Figure 4 — Forest plot: is the Response-vs-Causal-Forest gap distinguishable from zero?**
+**Figure 4 — Forest plot: is the Causal-Forest-vs-Response gap distinguishable from zero?**
 ![Forest plot of the six bootstrap CIs](figures/fig4_bootstrap_forest.png)
 
 *Source: paired bootstrap significance analysis from the experimental
@@ -266,7 +270,7 @@ these two models against the others.
   scores are correlated; it remains possible that visit and conversion
   reflect partially different treatment-effect structures rather than one
   problem viewed at two densities.
-- **Bootstrap coverage is partial.** Only the Response-LightGBM-vs-Causal-Forest
+- **Bootstrap coverage is partial.** Only the Causal-Forest-vs-Response-LightGBM
   gap was tested, on three (correlated) metrics, per outcome — not
   T-Learner vs. X-Learner, nor any other pairwise comparison.
 - **Resample-count and seed sensitivity were not checked.** The bootstrap

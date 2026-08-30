@@ -36,7 +36,7 @@ modified). Figure 4 could not be extracted; see the note below.
   should be read before trusting a single summary number
 
 ### Figure 4 — `fig4_bootstrap_forest.png`
-- **Title:** Forest plot — is the Response-vs-Causal-Forest gap
+- **Title:** Forest plot — is the Causal-Forest-vs-Response gap
   distinguishable from zero?
 - **Purpose:** Carry the memo's central statistical evidence (Table 5) in
   one image — bars crossing zero under conversion, bars clear of zero
@@ -65,3 +65,15 @@ modified). Figure 4 could not be extracted; see the note below.
   resulting real output was written into cell `74ab5e45` of the actual
   notebook (`execution_count=15`), verified via `nbformat.validate()` and
   a check that the cell's output contains `image/png`.
+- **Later re-orientation to the project's baseline-oriented convention**
+  (evaluated model minus Response, rather than Response minus evaluated
+  model): the gap was renamed from "Response LightGBM minus Causal Forest"
+  to "Causal Forest minus Response LightGBM" throughout the project. This
+  did not require rerunning the bootstrap — `paired_bootstrap_gaps(a, b,
+  ...)` and `paired_bootstrap_gaps(b, a, ...)` use the identical seeded
+  resample indices, so swapping the two score arrays negates every
+  per-draw gap exactly; the existing CI bounds were therefore negated
+  algebraically (`new_low = -old_high`, `new_high = -old_low`) rather than
+  recomputed, and the forest plot, `table5_bootstrap_ci.csv`, and this
+  notebook's cells were regenerated from those negated values. No model,
+  evaluation, or bootstrap-resampling code was rerun.
